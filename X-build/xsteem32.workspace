@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CodeLite_Workspace Name="xsteem" Database="" Version="10000">
+  <Project Name="xsteem32" Path="xsteem32.project" Active="Yes"/>
+  <BuildMatrix>
+    <WorkspaceConfiguration Name="Release" Selected="no">
+      <Environment/>
+      <Project Name="xsteem32" ConfigName="Release"/>
+    </WorkspaceConfiguration>
+    <WorkspaceConfiguration Name="ReleaseDyn" Selected="yes">
+      <Environment/>
+      <Project Name="xsteem32" ConfigName="ReleaseDyn"/>
+    </WorkspaceConfiguration>
+    <WorkspaceConfiguration Name="Debug32" Selected="no">
+      <Environment/>
+      <Project Name="xsteem32" ConfigName="Debug"/>
+    </WorkspaceConfiguration>
+  </BuildMatrix>
+</CodeLite_Workspace>

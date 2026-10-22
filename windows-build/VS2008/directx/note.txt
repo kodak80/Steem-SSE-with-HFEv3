@@ -1,0 +1,13 @@
+This folder has been created so that VS2008 can find libs without
+absolute path:
+d3d9.lib
+d3dx9.lib
+d3dx9d.lib
+dinput8.lib
+dxguid.lib
+
+Now we use
+C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x86
+since we already use
+C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x64
+for the 64bit builds.

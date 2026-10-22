@@ -1,0 +1,103 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.31005.135
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Steem", "SteemVS2019.vcxproj", "{9975320C-A18B-4425-B093-B11C1F35E3A4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug - draw_c|x64 = Debug - draw_c|x64
+		Debug - draw_c|x86 = Debug - draw_c|x86
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Debug-D3D|x64 = Debug-D3D|x64
+		Debug-D3D|x86 = Debug-D3D|x86
+		Debug-DD|x64 = Debug-DD|x64
+		Debug-DD|x86 = Debug-DD|x86
+		Debugger Debug|x64 = Debugger Debug|x64
+		Debugger Debug|x86 = Debugger Debug|x86
+		Debugger-D3D|x64 = Debugger-D3D|x64
+		Debugger-D3D|x86 = Debugger-D3D|x86
+		Debugger-D3D-Beta|x64 = Debugger-D3D-Beta|x64
+		Debugger-D3D-Beta|x86 = Debugger-D3D-Beta|x86
+		Debugger-DD|x64 = Debugger-DD|x64
+		Debugger-DD|x86 = Debugger-DD|x86
+		steem_libretro|x64 = steem_libretro|x64
+		steem_libretro|x86 = steem_libretro|x86
+		Steem-D3D|x64 = Steem-D3D|x64
+		Steem-D3D|x86 = Steem-D3D|x86
+		Steem-D3D-Beta|x64 = Steem-D3D-Beta|x64
+		Steem-D3D-Beta|x86 = Steem-D3D-Beta|x86
+		Steem-DD|x64 = Steem-DD|x64
+		Steem-DD|x86 = Steem-DD|x86
+		stvlxx|x64 = stvlxx|x64
+		stvlxx|x86 = stvlxx|x86
+		stvlxxd|x64 = stvlxxd|x64
+		stvlxxd|x86 = stvlxxd|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug - draw_c|x64.ActiveCfg = Debug - draw_c|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug - draw_c|x64.Build.0 = Debug - draw_c|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug - draw_c|x86.ActiveCfg = Debug - draw_c|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug - draw_c|x86.Build.0 = Debug - draw_c|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug|x64.ActiveCfg = Debugger-DD|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug|x64.Build.0 = Debugger-DD|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug|x86.ActiveCfg = Debugger-DD|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug|x86.Build.0 = Debugger-DD|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug-D3D|x64.ActiveCfg = Debug-D3D|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug-D3D|x64.Build.0 = Debug-D3D|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug-D3D|x86.ActiveCfg = Debug-D3D|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug-D3D|x86.Build.0 = Debug-D3D|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug-DD|x64.ActiveCfg = Debug-DD|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug-DD|x64.Build.0 = Debug-DD|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug-DD|x86.ActiveCfg = Debug-DD|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debug-DD|x86.Build.0 = Debug-DD|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger Debug|x64.ActiveCfg = Debugger Debug|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger Debug|x64.Build.0 = Debugger Debug|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger Debug|x86.ActiveCfg = Debugger Debug|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger Debug|x86.Build.0 = Debugger Debug|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger-D3D|x64.ActiveCfg = Debugger-D3D|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger-D3D|x64.Build.0 = Debugger-D3D|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger-D3D|x86.ActiveCfg = Debugger-D3D|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger-D3D|x86.Build.0 = Debugger-D3D|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger-D3D-Beta|x64.ActiveCfg = Debugger-D3D-Beta|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger-D3D-Beta|x64.Build.0 = Debugger-D3D-Beta|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger-D3D-Beta|x86.ActiveCfg = Debugger-D3D-Beta|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger-D3D-Beta|x86.Build.0 = Debugger-D3D-Beta|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger-DD|x64.ActiveCfg = Debugger-DD|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger-DD|x64.Build.0 = Debugger-DD|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger-DD|x86.ActiveCfg = Debugger-DD|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Debugger-DD|x86.Build.0 = Debugger-DD|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.steem_libretro|x64.ActiveCfg = steem_libretro|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.steem_libretro|x64.Build.0 = steem_libretro|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.steem_libretro|x86.ActiveCfg = steem_libretro|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.steem_libretro|x86.Build.0 = steem_libretro|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Steem-D3D|x64.ActiveCfg = Steem-D3D|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Steem-D3D|x64.Build.0 = Steem-D3D|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Steem-D3D|x86.ActiveCfg = Steem-D3D|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Steem-D3D|x86.Build.0 = Steem-D3D|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Steem-D3D-Beta|x64.ActiveCfg = Steem-D3D-Beta|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Steem-D3D-Beta|x64.Build.0 = Steem-D3D-Beta|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Steem-D3D-Beta|x86.ActiveCfg = Steem-D3D-Beta|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Steem-D3D-Beta|x86.Build.0 = Steem-D3D-Beta|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Steem-DD|x64.ActiveCfg = Steem-DD|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Steem-DD|x64.Build.0 = Steem-DD|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Steem-DD|x86.ActiveCfg = Steem-DD|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.Steem-DD|x86.Build.0 = Steem-DD|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.stvlxx|x64.ActiveCfg = Steem-D3D|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.stvlxx|x64.Build.0 = Steem-D3D|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.stvlxx|x86.ActiveCfg = Steem-D3D|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.stvlxx|x86.Build.0 = Steem-D3D|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.stvlxxd|x64.ActiveCfg = Steem-D3D|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.stvlxxd|x64.Build.0 = Steem-D3D|x64
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.stvlxxd|x86.ActiveCfg = Steem-D3D|Win32
+		{9975320C-A18B-4425-B093-B11C1F35E3A4}.stvlxxd|x86.Build.0 = Steem-D3D|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {21B629BA-96EE-48AA-BBDF-C81A5FBC1C7A}
+	EndGlobalSection
+EndGlobal

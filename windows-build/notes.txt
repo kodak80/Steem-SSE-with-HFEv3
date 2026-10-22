@@ -1,0 +1,23 @@
+VS2008 is used to build the release versions of Steem SSE since v3.7.
+
+We use that and not a more recent compiler for compatibility (Steem SSE
+supports Windows XP to Windows 11) but for development we recommend
+VS2019 (see the Building Steem SSE for Windows file).
+
+The VS2015 project files will not be maintained beyond Steem 4.0, we've
+switched to VS2019.
+
+Before v3.7 VC6 (Visual Studio folder) was used as main compiler since v3.3.
+The VC6 build will not compile anymore.
+
+Before that it was BCC.
+The BCC build is still working but hasn't all the features.
+
+The MinGW build is experimental and will certainly not compile the current
+version (did work at some point, but stopped following it).
+
+The cygwin build was never maintained in Steem SSE.
+
+The steemupdate part is ignored by Steem SSE.
+
+There are x64 builds since v3.8.2 (VS2008+).

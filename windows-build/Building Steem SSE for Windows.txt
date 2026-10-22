@@ -1,0 +1,67 @@
+Building Steem SSE for Windows
+------------------------------
+
+Modern IDE
+----------
+
+Download Visual Studio Community 2019
+
+It is free but you must sign in (have a sort of Microsoft account, hotmail 
+worked for me):
+
+https://visualstudio.microsoft.com/vs/community/
+
+Select C++ tools, of course.
+
+You will also likely need the Microsoft DirectX SDK (June 2010):
+
+https://www.microsoft.com/en-us/download/details.aspx?id=6812
+
+And maybe the Windows SDK 7.1:
+
+https://www.microsoft.com/en-us/download/details.aspx?id=8279
+
+The assembler (normally not needed for the main builds):
+
+https://nasm.us/
+
+Open one of the project files in VS2019, Quick or regular.
+The Quick projects build beta versions by default.
+Select the build in the dropdown menus, the main build is Steem-D3D and x64.
+In the Solution Explorer, right click on Steem and click Build, or press F7.
+This produces an executable called Steem.exe in the Steem-D3D folder.
+If you have a "E:\Emu\ST\bin\steem" directory (I do!), the build will be copied
+there and renamed. If not, edit or remove the command in the configuration
+settings (right click Steem, Properties, or alt F7), Build Events, Post-Build,
+or you will get an annoying error message.
+
+
+Older compilers
+---------------
+
+If you want to build the exact same versions that are released, then you must
+use Visual Studio 2008, it's not officially supported anymore on Windows 10
+and has issues on that OS, so we don't recommend it, it is used mainly for
+compatibility (Steem SSE supports a wide range of Windows versions from Windows
+XP to Windows 11).
+The error message you get when opening the VS2008 solution about a missing
+STVL project is normal, this is for an unreleased plugin. You don't get this
+annoyance with the VS2019 builds.
+
+The files for other older compilers are kept in the SVN repo trunk, not the
+release branch.
+
+The VC6 (visual-studio folder) isn't maintained anymore, it will not work.
+
+The VS2015 builds are not maintained anymore since v4.1, VS2019 is recommended
+instead.
+
+The command-line Borland builds still work but they are less optimised and
+don't have features that depend on Windows 2000 and above.
+See the notes in that folder.
+
+The MinGW build is experimental and will certainly not compile the current
+version (did work at some point, but stopped following it).
+
+The cygwin build was never maintained in Steem SSE.
+

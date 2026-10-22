@@ -1,0 +1,10 @@
+libraries needed:
+
+X11
+Xext
+pthread
+Xxf86vm
+libasound
+portaudio
+capsimage
+pulse

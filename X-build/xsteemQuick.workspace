@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CodeLite_Workspace Name="xsteem" Database="">
+  <Project Name="xsteemQuick" Path="xsteem.project" Active="Yes"/>
+  <Project Name="xsteemQuick" Path="xsteemQuick.project" Active="Yes"/>
+  <BuildMatrix>
+    <WorkspaceConfiguration Name="Debug" Selected="no">
+      <Environment/>
+      <Project Name="xsteemQuick" ConfigName="Debug"/>
+      <Project Name="xsteemQuick" ConfigName="Debug"/>
+    </WorkspaceConfiguration>
+    <WorkspaceConfiguration Name="Release" Selected="yes">
+      <Environment/>
+      <Project Name="xsteemQuick" ConfigName="Release"/>
+      <Project Name="xsteemQuick" ConfigName="Release"/>
+    </WorkspaceConfiguration>
+  </BuildMatrix>
+</CodeLite_Workspace>

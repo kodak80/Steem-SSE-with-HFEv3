@@ -1,0 +1,113 @@
+PASTI file format
+
+Files in this format have the extension ”.stx”, probably for “ST - eXtended”. This description is valid for files created with PASTI 0.4b BETA.
+
+    0x.. is a hex offset to the beginning of the structure
+    .b = a single byte
+    .w = a 16-bit word (little endian!)
+    .l = a 32-bit word (little endian!)
+
+A typical protected file looks like this:
+
+    File Header
+    Track Header
+        Sector Header
+        Sector Header
+        Sector Header
+        …
+        Fuzzy sector mask
+        Track data (either the sectors or the whole track)
+    Track Header
+        Sector Header
+        Sector Header
+        Sector Header
+        …
+        Fuzzy sector mask
+        Track data (either the sectors or the whole track)
+    …
+
+File header (16 bytes)
+
+0x00 : 'R','S','Y',0    - File ID
+0x04 : 0x03,0x00        - Probably the version number of the format
+0x06 : 1.w
+0x08 : 0.w
+0x0a : tracks.b (e.g. 80 or 160 for double sided)
+0x0b : 1
+0x0c : 0.l
+
+After the file header one block for each track is following. Each block also starts with a 16 byte header:
+Track Header (16 bytes)
+
+0x00.l : length of the track in bytes. This value plus the current position in the
+         file points to the following track header.
+0x04.l : bytes of fuzzy sector mask in this track
+0x08.w : number of sectors in the track
+0x0A.w : bitmask with flags
+0x0C.w : length of the track in bytes (around 6kb is normal)
+0x0E.b : track number
+0x0F.b : unused in the file
+
+The bitmask for the flags
+
+7 - The track image also contains a sync-offset to the beginning of the first sync marker
+6 - If set the track is saved as an image with all gaps via the read track command with
+    the sector content filled in via read sector.
+5 - with PASTI 0.4b always set, if Bit 0 is set (= track protected)
+4 - unused
+3 - unused
+2 - unused
+1 - unused
+0 - If set the track is protected or with a non-standard sectorsize (!= 512 bytes)
+
+If Bit 0 is clear, the track is unprotected and the number of sectors as stored in the track block header are simply saved as 512 byte blocks directly after the header. The track is therefore 16 + 512 * sectors bytes long.
+
+If Bit is set, the header is first followed the sector headers. One for each sector in the track, again 16 bytes per header.
+Sector Header (16 bytes)
+
+0x00.l : sector offset inside the track data
+0x04.w : position of the sector header relative to the beginning of the track as a
+         time stamp. The position timing is depended on the RPM speed of the drive,
+         but for a ~6250 byte track the value for a full rotation is around
+         50000 (for 300 rpm). This allows software to simulate the time it takes
+         to find the sector and read it, something certain copy protection schemes
+         test.
+0x06.w : read timing of the sector data, certain copy protections write sectors so, that
+         it takes longer to read them. The protection measures the time to read the
+         sector. 16384 is the default value, larger values mean that it takes longer
+         to read the sector than normal. However if the measured value by PASTI is
+         within 2% of this value (16384 +/- 320), the value written to the stx file
+         is 0 as a sign for a stable read speed.
+0x08.b : Track number from the address block identifying the sector (typically 0..79)
+0x09.b : Side from the address block identifying the sector (typically 0 or 1)
+0x0a.b : Sector from the address block identifying the sector (typically 1..9)
+0x0b.b : Size of the sector from the address block identifying the sector
+         (typically: 0=128, 1=256, 2=512 or 3=1024 bytes)
+0x0c.b : First byte of the CRC over the address block
+0x0d.b : Second byte of the CRC over the address block
+0x0e.b : FDC status register after reading the sector
+0x0f.b : Sector flags, always 0x00
+
+The CRC is a CCITT CRC16 calculated by the FDC. It is initialized with 0xFFFF and includes the sync marks, therefore typically 0xA1,0xA1,0xA1,0xFE plus the 4 bytes from the address block.
+
+The FDC status is typically 0x00. Also common is 0x10 for a sector not found and 0x08 for a CRC error when reading. Bit 7 has a special meaning: it hints that the sector has fuzzy bits and the fuzzy sector mask should be used. If Bit 7 is set, Bit 3 is usually also set, because fuzzy bits will trigger a CRC error inside the sector.
+
+After the sector headers the fuzzy sector mask is following, if the value is != 0 in the track header. The mask identifies the bits that are random in a given sector. The size of the fuzzy sector mask depends on the sector size (from the header) and the number of fuzzy sectors in the track itself. The fuzzy sector mask has bits set for every bit in in the sector, that is _not_ random. Therefore a byte generated with the mask could be calculated like this:
+
+fdcSectorByte[byteOffset] = (sectorData[byteOffset] & fuzzyMask[byteOffset]) | (rand() & ~fuzzyMask[byteOffset])
+
+After the fuzzy sector mask, the sectors are written to the file. If neither Bit 6 or 7 in the track flags is set, only the content of the sectors is written. Again with the sector size in the header taking into consideration. These tracks can be also easily recognized by sector offsets that are always a power of 2 (typically in 512 byte increments), starting at 0.
+
+Following the fuzzy sector mask is the track data area. This area can contain either the sectors by itself, or the complete track image with the sectors embedded, or the complete track with the sectors separate (following the track image). How they are stored is stored in Bit 6 and 7 in the track flags.
+
+If Bit 6 and 7 are clear, there is no track image and the sectors are stored just by order end length - just like the fuzzy sector mask, except this time for all sectors. Warning: sectors can be missing, if only a header was read, but the data was missing. The FDC status has Bit 4 (Record not found) set in this case.
+
+If Bit 6 is set and 7 is clear, the track image is written with a track image header and the sectors follow the track image in the usually order and length. The track image header is just a word (little endian, as usual) that contains the length of the track image.
+
+Bit Bit 6 and 7 is set, the track image is written with a track image header that has two words: the first one is a byte offset to the first 0xA1 address mark sync, the second word is the length of the track image in bytes.
+
+If Bit 7 is set, the sector data is usually merged inside the track image, the sector offsets then point inside the actual track image. However, it is possible for single sectors to have an offset _behind_ the track image, if PASTI couldn't map them correctly into the track image. A software should always read the sectors based on the sector offset in the sector header.
+
+If you find any errors in this document, please let me know: atari@sarnau<DOT>com. Thanks a lot!
+
+Markus Fritze

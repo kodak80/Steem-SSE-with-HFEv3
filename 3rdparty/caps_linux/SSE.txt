@@ -1,0 +1,52 @@
+CAPS/SPS in Linux - Steem SSE notes
+
+- Added txt extensions to history, license, readme, it helps my backup tool.
+
+- There's no 'CapsPlug' for the Linux version. The functions of the library
+  are defined in the library.
+  But we use it anyway so the Windows/Linux differences appear in only one
+  place in Steem. We have an extra step just like in Windows.
+
+- For CTR/IPF disk image support, xsteem needs a library, libcapsimage.so.5.1
+
+- To create the library, go into capsimg_source_linux_macosx/CAPSImg, type:
+    ./configure
+    make B
+    sudo make install
+
+  Or use the one in the download (32bit).
+  In any case, a libcapsimage.so.5 file is expected. Unlike the Windows version,
+  we can't do without. 
+
+  32bit on Linux 64bit:
+  ./configure --target i386
+  make -B -fMakefile32.txt
+  sudo make install
+
+- This should be placed in a shared library directory (usr/lib/...) and renamed
+  libcapsimage.so.5, or an alias (symbolic link) should be created.
+
+  Open a terminal in the library folder and type:
+
+  sudo mv libcapsimage.so.5.1 libcapsimage.so.5
+
+  or:
+
+  sudo ln -s libcapsimage.so.5.1 libcapsimage.so.5
+
+- To build xsteem with CodeLite, the library or its alias must be called
+  libcapsimage.so (without 5!) or capsimage.
+  
+  You may create an alias in usr/local/lib (or usr/lib32)
+
+  sudo cp libcapsimage.so.5.1 /usr/local/lib/libcapsimage.so.5.1
+  sudo ln /usr/local/lib/libcapsimage.so.5.1 /usr/local/lib/libcapsimage.so
+
+  That's the way I found, maybe there is a better one.
+
+- Some files in capsimg_source_linux_macosx are referenced by Steem, they make up
+  v5.1 of the library, files out of that folder are v4.2 and are not used.
+
+- How to build and reference capsimage is also explained in
+  X-Build/Building XSteem SSE.txt
+

@@ -1,0 +1,370 @@
+[SCROLLERS]
+§v, built §b
+running §d
+Press F12 to start/stop emulation, F11 to grab or free the mouse
+Steem, the STE emulating engine, written by Anthony and Russell Hayward
+Steem SSE stands for ST Enhanced Emulator Sensei Software Edition
+!The Atari ST was the best, so why bother with the rest?
+Right-click on the fast forward button or left click on the status bar icons to use the flashlight - see if there is really something there on a black screen
+steem was created using Borland's Free C++ compiler, it is maintained with Free Visual C++ and CodeLite too
+Thanks to all the people who have helped, knowingly or not, make Steem better
+If a program won't run from hard drives, copy it to a disk image using the ST desktop, and it might work better
+Some programs won't work if their disk is read only, always try making it read-write (or extracting the disk if it is in an archive) if you have problems
+Some programs won't work with memory size set to 4Mb or 512Kb
+More programs than you think require accurate disk timings or a single drive configuration
+Steem doesn't modify archives: disk writes will be lost except if you use the Ghost Disk feature
+When a program wants to format a disk, better use an STW image (create in disk manager)
+You can convert SCP or STX disk images to STW v2 in the disk manager
+When you select joystick 0, the mouse is disconnected from the ST
+Bookmark http://sourceforge.net/projects/steemsse
+!GREETINGS TO JEAN CLAUDE VAN DAMME, LANCE HENRIKSEN, NICOLAS CAGE, KURT RUSSELL, NICK NOLTE, JOHN TRAVOLTA, TOM SELLECK, MICHAEL IRONSIDE, STEPHEN LANG, KAYDEN NGUYEN, WILLIAM FORSYTHE, MICHAEL CAINE, JEFF SPEAKMAN, MICHAEL PARE, SYLVESTER STALLONE, DANNY TREJO, RICHARD DEAN ANDERSON, MICHAEL BIEHN, KEVIN COSTNER, BOLO YEUNG, BRIAN BOSWORTH, MARIO VAN PEEBLES, BRUCE WILLIS, CLINT EASTWOOD, VERNON WELLS, MICHAEL DUDIKOFF, TOM BERENGER, HARRISON PAGE, BRIAN THOMPSON, LIAM NEESON, SEAN BEAN, RICHARD LYNCH, DOLPH LUNDGREN, DONALD GIBB, MICKEY ROURKE, GARY BUSEY, JESSE VENTURA, CARL WEATHERS, MEL GIBSON, BILL DUKE, BILL PAXTON, HARRISON FORD, VIGGO MORTENSEN, SVEN-OLE THORSEN, ARNOLD SCHWARZENEGGER, VINCENT KLYN, VIN DIESEL, WILLEM DAFOE, LEE MAJORS, CHRISTOPHER WALKEN, PAUL MICHAEL GLASER AND JAMES WOODS... R.I.P. LEE VAN CLEEF, PAUL WALKER, HARRY DEAN STANTON, CHARLES BRONSON, BILLY DRAGO, DAVID CARRADINE, SOON-TEK HO, SEAN CONNERY, RUTGER HAUER, ROBERT CONRAD, JOHN SAXON, DAVID SOUL, CHUCK NORRIS AND DONALD SUTHERLAND...
+!Steem is the best, so why bother with the rest?
+!When Chuck Norris can't do it, call Steven Seagal
+!The most profound and mysterious art in the world is the art of aikido. This is the secret principle of all the martial arts. One who masters it can be an unparalleled martial genius.
+Demos don't work? check the Emu parameters 1 Overscan option
+!Atari's monochrome monitor was one of the best of its time, for a modest price
+You may use the ghost disk feature to save your high scores on protected games 
+!Sick of those silly scrollers? You can switch them off in the options!
+Some strange dots on hicolour pics? Option Shifter wakeup may help
+!People who programmed action games on the ST were heroes
+!GEM... the superior Operating System
+Please take the time to read the manual, it's worth it, it is available on https://sourceforge.net/projects/steemsse/
+!With Steem SSE, the legend continues!
+Some games can work both on colour and on monochrome monitors
+!Did you know that Steve Bak made one of the best games: Goldrunner, and one of the worst: The Lands of Havoc?
+!Steve Bak made games for the Atari ST and the Amiga, but did his work on the ST
+!Ever wonder why so many menu disks were available on the ST? Probably because early drives were single-sided... This also gave us the freeboot! Yeah!
+Some games play MIDI notes, depending on your configuration this could produce unexpected sounds
+520STF, 1040STF, Mega 2, Mega 4, 520STE, 1040STE, Mega STE, choose your machine, choose your game
+Some programs like Cubase, Notator, Aladin etc. are protected by a dongle and will not work properly in Steem
+You can use mapping files or shortcuts to assign keys of the PC keyboard to ST keys
+!Some ST demos have more doors than Dungeon Master
+If you want some info about a program, check the status page in the general information dialog. To dig deeper use the debugger
+Please only use the forum at sourceforge for bug reports. Please read the rules, don't be rude.
+Use the FPS option to check the frame rate of those bad games
+Steem can emulate the SMM804 dot matrix printer or the SLM804 laser printer, IO ports options
+!All those mags reviewing hardware and games can now be found on the internet, check some links in the doc
+The monochrome monitor had large borders probably because of the STF wakeup shift
+!The best experience for a writer was a Mega ST: crisp monochrome display, Cherry key switches
+The borders and the aspect ratio looked better on the US ST, running at 60Hz
+The ST had a very useful feature: you could control the mouse pointer with the keyboard (alt + arrows)
+!Steem SSE's goal is to keep the Atari ST alive in the hearts and minds of old and new generations
+!Early programs like The Pawn and Neochrome already used advanced techniques to trick the ST hardware
+!Atari renamed the Mega ST to "Mega" to avoid the association with the ST... as if "Atari" sounded serious
+!Dungeon Master loaded so slowly because it was extremely compressed to fit in one single-sided disk
+!Did you know that Steven Seagal is still making very good movies in the 2020s?
+!"Strange... strange to me!" - Jean Claude Van Damme
+!"To emulate an Atari, you have to become Atari!" - Sylvester Stallone
+!"If it crashes, it crashes!" - Dolph Lundgren
+!"Steem doesn't step on toes it steps on necks!" - Chuck Norris
+!"I am insane, and Atari is my insanity!" - Bruce Willis
+!"No Escape from New Steem!" - Kurt Russel
+!"If I find that Mad Max, I'll ask him about the YM2149!" - Mel Gibson 
+!"Love Steem, Love Steem, Love Steem!" - Nick Nolte
+!"Steem SSE is a target because it really works well!" - John Travolta
+!"I want to take the borders... off!" - Nicholas Cage
+!"I've seen things you people wouldn't believe... Attack ships on fire off the shoulder of Orion. I watched c-beams glitter in the dark near the TannhAuser Gate. I saw Steem emulate all the ST programs... All those moments will be lost in time, like tears in rain!" - Rutger Hauer
+!"I love the smell of the Shifter in the morning!" - Robert Duvall
+!"It plays like a Robin Masters novel!" - Tom Selleck
+!"Steem is my secret weapon!" - Lee Van Cleef
+!"You owe me nothing, just enjoy your games!" - Jose Calvo
+!"If you don't like Steem SSE's new icons I will deal with you... with extreme prejudice!" - Michael Ironside
+!"Everybody waan perfect emulation but nobody want test!" - Basil Wallace
+!"I'm proud of On Deadly Ground now!" - Michael Caine
+!"We are going to pursue lamers everywhere for my friend Steven Seagal. If they are in the airport, we will pursue them in the airport. And if we capture them in the toilet, then we will waste them in the outhouse. The issue has been resolved once and for all." - Vladimir Putin
+!"Make Atari great again!" - Donald Trump
+!"Define hack!" - Bill Clinton
+!"In Steem we trust!" - Dwight Eisenhower
+!"Read my lips: S T E E M    S S E!" - G.H. Bush
+!"Iraq has been massively spreading a virus targeting the Atari ST!" - G.W. Bush
+!"If you want to keep your emulator, you can keep your emulator!" - Barack Obama
+!"Don't ask what Steem can do for you, ask what you can do for Steem!" - J.F. Kennedy
+!"An emulator that cannot control its borders is not an Atari ST emulator!" - Ronald Reagan 
+!"I'm running for President of Steem SSE!" - Joe Biden
+!"I emulate, therefore I am!" - Rene Descartes
+!"To blit or not to blit, that is the question!" - William Shakespeare
+!"The Ayatollah of emulation!" - Mario Van Peebles
+!"An emulator comparison? Make my day!" - Clint Eastwood
+!"Bugs must die!" - Jet Li
+!"The error! The error!" - Marlon Brando
+!"Little hack never hurt anybody!" - Richard Dean Anderson
+!"That is so cool!" - Kevin Costner
+!"Listen and understand. That Steem is out there. It can't be bargained with. It can't be reasoned with. It doesn't feel pity, or remorse, or fear. And it absolutely will not stop, ever, until you like the ST." - Michael Biehn 
+!"Woof woof woof!" - Donald Sutherland
+!"You know what I like best about this program? The price!" - Bill Duke
+!"Imagine the future, 'cause Steem is in it!" - Brian Bosworth
+!"I don't need the gun, I don't need the girl, I only need Steem!" - Vernon Wells
+!"When emulation breaks down, we break down!" - Tom Berenger
+!"I will look for you, I will find you, and I will debug you!" - Liam Neeson
+!"God forgives, emulation doesn't!" - Lance Henriksen
+!"Mind if I test your Atari?" - Gary Busey
+!"Ain't got time to blit!" - Jesse Ventura
+!"Kung Fu this!" - David Carradine
+!"Steem sometimes scares me the way Rambo used to do!" - Charles Napier
+!"This goes WAY beyond emulation!" - Bill Paxton
+!"I learned everything I know on ST Karate!" - Jackie Chan
+!"This is the Ruling Emulator!" - Viggo Mortensen
+!"Programs we live by!" - Sven-Ole Thorsen
+!"Atari forever, and go to the chopper!" - Arnold Schwarzenegger
+!"I can't get no emulation!" - Mick Jagger
+!"There are demos that are known and demo that are unknown; in between are the doors.” - Jim Morrison
+!ST scene stinks. It is small. It is megalame. No magic.
+ST, MSA, DIM, STT, STX, IPF, CTR, SCP, HFE, STW, PRG, TOS: Steem runs everything!
+!Piracy is theft
+!Unauthorised copying is a violation of law.
+
+[WINSCROLLERS]
+Know your mc68k from your mk68901?  Download the debug build of steem and help us get those little games working
+Know the blitter from the shifter? Download the debug build of steem and help us get those little demos working
+Know a spurious interrupt from an ACIA overrun? Download the debug build of steem and help us get those little applications working
+Know the GLUE from the MMU? Download the debug build of steem and help us get those little menu disks working
+Using the debugger you can prepare patches to pass some protections - check if the one you want is already included 
+drag a file to the Home button with right mouse button - easy shortcuts to your disks
+You can right-click on drive icons for even more options
+Keyboard freaks: Press alt for an alternative menu
+Steem's current MIDI time resolution is more or less one millisecond unless you check the DirectMusic option
+You can use Steem on a second monitor, even in fullscreen under conditions
+!Steem Debugger: Power without the price!
+In debug builds, you can toggle the debugger using the bomb in the toolbar
+You can quickly convert a zip file to a disk image from inside the disk manager, using MSA converter
+!Don't squint your eyes that way, there's an option for a bigger GUI
+If you use G-Sync or FreeSync (only possible with the right hardware), don't use VSync
+Things like VSync, G-Sync or freesync make all the difference for smooth animation, check what your hardware can do
+Changing the process priority has an effect on frame rate regularity
+!You want Atari-tight MIDI timings? Buy an Atari!
+
+[LINKS]
+...Forums
+Atari Forum
+http://www.atari-forum.com/
+Exxos forum
+https://www.exxoshost.co.uk/forum/
+AtariAge
+http://www.atariage.com/
+8BitChip Forum
+http://forum.8bitchip.info/
+
+
+...ST programs downloads
+Atarimania
+http://www.atarimania.com/
+Automation Game List
+http://steem.atari.st/automation.htm
+Stonish.net
+http://www.stonish.net/
+Automation Game List 2
+http://www.exxoshost.co.uk/atari/games/automation/AUTOMATION2015A.htm
+The Fuzion Shrine
+http://omiquel.lautre.net/
+Medway Boys Menus - The Pictures
+http://www.spiny.org/medway/
+Planet Emu (French)
+http://www.planetemu.net/
+D-Bug
+http://dbug.atari.org/
+Mr. Sam's Atari ST Site
+http://www.h2nob.de/games/atari/st/
+Petari (utilities, fixed games...)
+http://atari.8bitchip.info/
+Klapauzius
+http://www.klapauzius.net/
+Resampled
+http://rom.resampled.ru/%D0%94%D0%B8%D1%81%D0%BA%D0%B8%20%D0%B4%D0%BB%D1%8F%20Atari%20ST/
+Atari Legend
+http://www.atarilegend.com/
+
+
+...Games Discussion
+Atari Crypt
+https://ataricrypt.blogspot.com/
+Bird Sanctuary - Rainbird, Firebird and Silverbird
+http://www.birdsanctuary.co.uk/
+Brataccas
+http://brataccas.com/
+Captain Blood
+http://argnet.fatal-design.com/bluddian.php
+Captive
+http://captive.atari.org/
+Dungeon Master fans
+http://www.dungeon-master.com/index.htm
+Dungeon Master Encyclopaedia
+http://dmweb.free.fr
+Gryzor
+http://www.gryzor.info/index2.html
+Infocom
+http://infocom-if.org/index2.html 
+Lethal Xcess
+http://edv-rudolf.de/lethal-xcess/main.htm
+Level 9
+http://l9memorial.if-legends.org/html/home.html
+Lords of Chaos
+http://l-o-c.sourceforge.net/
+Magnetic Scrolls
+http://magneticscrolls.info/memorial.php
+Thalion
+http://thalion.atari.org/
+
+
+...ST Utilities
+Pasti
+http://pasti.fxatari.com/
+EmuTOS
+http://sourceforge.net/projects/emutos
+TeraDesk
+http://solair.eunet.rs/~vdjole/teradesk.htm
+Windows Floppy Disk Copy
+http://sourceforge.net/projects/wfdcopy/
+Gemulator Explorer
+http://www.emulators.com/explorer.htm
+STDisk
+http://www.8hz.com/stdisk/
+Disk2FDI
+http://www.oldskool.org/disk2fdi
+Avtandil
+http://www.avtandil.narod.ru/indexe.html
+
+...Hardware
+HxC Floppy Emulator
+http://hxc2001.com/
+Kryoflux
+http://kryoflux.com/
+Supercard
+http://www.cbmstuff.com/index.htm
+Exxos
+http://www.exxoshost.co.uk/atari/
+Lotharek
+https://lotharek.pl/
+
+...Demos (Steem runs them all!)
+Pouet
+http://www.pouet.net/ 
+Demozoo
+http://demozoo.org/
+Dead Hackers Society
+http://www.dhs.nu/
+PaCiDemo
+http://pacidemo.planet-d.net/
+Delta Force
+http://wwwbrauer.informatik.tu-muenchen.de/~brandtf/df.html
+No Fragments Atari.Org Mirror
+http://no-fragments.atari.org/
+PHF - Atari, C64 & Amiga coders
+http://www.tphf.karoo.net/
+Cybernetics
+http://cyber.savina.net/
+Equinox
+http://equinox.planet-d.net/
+Cyclone's X-Troll Website
+http://www.edv-rudolf.de/xtroll/
+Official HMD Whq
+http://hemoroids.eu/
+
+
+...E-mags
+atarimagazines
+http://www.atarimagazines.com/ 
+ST Format
+http://stformat.com/
+Computer Magazin Archiv (German and English)
+http://www.stcarchiv.de/
+MyAtari.net
+http://www.myatari.net/
+Atari ST Review magazine archive
+https://www.chillichai.com/atari-st-review
+Abandonware-Magazines (French)
+https://www.abandonware-magazines.org/
+
+
+...Documentation
+atari4ever
+http://atari4ever.free.fr/
+Atari STE Fanpage
+http://atari-ste.anvil-soft.com/
+bus-error
+http://bus-error.nokturnal.pl
+Atari ST Hardware Information
+http://info-coach.fr/atari/hardware/index.php
+TOSEC
+https://www.tosecdev.org/
+
+...Other ST Emulators (not as good as Steem)
+PaCifiST (DOS)
+http://www.atari.st/pacifist/
+WinSTon SourceForge (Windows)
+http://sourceforge.net/projects/winston/
+SainT (Windows)
+http://leonard.oxg.free.fr/SainT/saint.html
+Hatari (Unix, Mac, Windows)
+http://hatari.tuxfamily.org/
+ARAnyM
+https://aranym.github.io/
+Castaway
+http://sourceforge.net/projects/castaway/
+Gemulator (Windows)
+http://www.emulators.com/
+STonX
+http://sourceforge.net/projects/stonx/
+NoSTalgia and PowerST (Mac)
+http://users.skynet.be/sky39147/
+FAST (DOS)
+http://fast.emuunlim.com/
+
+...Legacy and various
+Atari.org
+http://www.atari.org/
+Lee's Atari ST Shrine
+http://www.atari-shrine.co.uk/
+Atari Force (French)
+http://atariforce.free.fr/
+Lip6 FTP
+ftp://ftp.lip6.fr/pub/atari
+Funet
+http://www.funet.fi/pub/atari/
+Reservoir Gods
+http://www.reservoir-gods.com/
+Zogging Hell!!!
+http://www.zhell.co.uk/
+TiK's Atari ST Image Riot (French)
+http://tik.atari.org/
+Sector One Homepage
+http://deunstg.free.fr/sct1/index.html
+sc68 - Atari ST and Amiga musics
+http://sc68.atari.org/
+GokMasE's Atari Page
+https://web.archive.org/web/20160503205108/http://aicq.atari-users.net/
+Defence-Force Atari page
+http://www.defence-force.org/computing/atari/index.htm
+Mike's Web Archive
+http://members.optusnet.com.au/~atari1/
+Tim's Atari MIDI World
+https://web.archive.org/web/20100504085054/http://tamw.atari-users.net/index.htm
+ARGanoid's ST Scene page
+http://argnet.fatal-design.com/stscene.php
+Atari History Museum
+http://www.atarimuseum.com/
+ATARItoday
+https://web.archive.org/web/20070828042919/http://www.ataritoday.com/index.html
+x-com.atari.org (German)
+http://x-com.atari.org/
+Freddo (French)
+http://www.chez.com/freddo/
+Epsilon's Archives (French and English)
+http://tms.foxysofts.com/
+public ATARI (German)
+http://www.haretuerk.de/atari/index.html
+aLiVe! HQ
+http://alive.atari.org/
+Atari Hardware Guide
+http://hardware.atari.org/
+The MALEB Atari Page
+http://atari.scum.org/
+MagiCPC (Windows)
+http://www.application-systems.de/magicpc/
+MagiCMac (Mac)
+http://www.application-systems.de/magicmac/index.html
+dev-doc
+https://web.archive.org/web/20171016150036/http://dev-docs.atariforge.org/
+
+[LINKSEND]
+[END]
+

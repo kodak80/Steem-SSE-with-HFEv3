@@ -1,0 +1,148 @@
+Compiling Steem SSE for Linux (XSteem SSE)
+==========================================
+
+Dev Distro: Ubuntu (32bit or 64bit) Virtual Machine under Windows
+
+
+0. Tip
+------
+
+You can use apt-file to find which package you need to download when
+the compiler doesn't find some h file part of a library.
+
+sudo apt-get install apt-file
+sudo apt-file update
+
+eg:
+apt-file search "X11/extensions/xf86vmode.h"
+libxxf86vm-dev: /usr/include/X11/extensions/xf86vmode.h
+
+apt-file -ai386 search "libportaudio.so.2"
+libportaudio2: /usr/lib/i386-linux-gnu/libportaudio.so.2
+libportaudio2: /usr/lib/i386-linux-gnu/libportaudio.so.2.0.0
+
+
+1. Get necessary packages
+-------------------------
+
+sudo apt-get install build-essential
+sudo apt-get install nasm
+
+32bit on Linux 32bit:
+
+sudo apt-get install libxext-dev
+sudo apt-get install libxxf86vm-dev
+sudo apt-get install libasound2-dev
+sudo apt-get install libasound2
+sudo apt-get install portaudio19-dev
+sudo apt-get install libpulse-dev
+
+32bit on Linux 64bit:
+
+sudo apt-get install g++-multilib
+sudo apt-get install libxext-dev:i386
+sudo apt-get install libxxf86vm-dev:i386
+sudo apt-get install libasound2-dev:i386
+sudo apt-get install libasound2:i386
+sudo apt-get install portaudio19-dev:i386
+sudo apt-get install libpulse-dev:i386
+sudo apt-get install libasound2-plugins:i386
+
+64bit on Linux 64bit:
+
+sudo apt-get install libx11-dev
+sudo apt-get install libxext-dev
+sudo apt-get install libxxf86vm-dev
+sudo apt-get install libasound2-dev
+sudo apt-get install libpulse-dev
+sudo apt-get install libportaudio2
+sudo apt-get install portaudio19-dev
+
+
+2. Create the capsimage library
+-------------------------------
+
+Support for IPF, CTR
+It is messy and not optional!
+
+Go into
+3rdparty/caps_linux/capsimg_source_linux_macosx/CAPSImg
+
+Open a terminal
+
+32bit on Linux 32bit:
+./configure
+make -B
+sudo make install
+sudo cp libcapsimage.so.5.1 /usr/lib/i386-linux-gnu/libcapsimage.so.5
+This is so that CodeLite sees the library:
+sudo cp libcapsimage.so.5.1 /usr/local/lib/libcapsimage.so.5.1
+sudo ln /usr/local/lib/libcapsimage.so.5.1 /usr/local/lib/libcapsimage.so
+
+32bit on Linux 64bit:
+./configure --target i386
+make -B -fMakefile32.txt
+sudo make install
+sudo cp libcapsimage.so.5.1 /usr/lib/i386-linux-gnu/libcapsimage.so.5
+This is so that CodeLite sees the library:
+sudo cp libcapsimage.so.5.1 /usr/lib32/libcapsimage.so.5.1
+sudo ln /usr/lib32/libcapsimage.so.5.1 /usr/lib32/libcapsimage.so 
+
+64bit on Linux 64bit:
+./configure
+make -B
+sudo make install
+sudo cp libcapsimage.so.5.1 /usr/lib/x86_64-linux-gnu/libcapsimage.so.5
+This is so that CodeLite sees the library:
+sudo cp libcapsimage.so.5.1 /usr/local/lib/libcapsimage.so.5.1
+sudo ln /usr/local/lib/libcapsimage.so.5.1 /usr/local/lib/libcapsimage.so
+
+
+3. Build XSteem SSE with the command-line
+-----------------------------------------
+
+To build XSteem SSE, enter this in the terminal (32bit on Linux 32bit):
+
+32bit on Linux 32bit:
+ make -B -fMakefile.txt 3rdparty
+ make -B -fMakefile.txt
+
+32bit on Linux 64bit:
+
+make -B -fMakefile32.txt 3rdparty
+make -B -fMakefile32.txt
+
+64bit on Linux 64bit:
+
+make -B -fMakefile64.txt 3rdparty
+make -B -fMakefile64.txt
+
+
+4. Build XSteem SSE Using CodeLite
+----------------------------------
+
+If you don't have CodeLite installed yet, type in a terminal:
+
+sudo apt install codelite
+
+
+The xsteem project files are in this directory (xsteemQuick may be trouble).
+Open the 32bit or 64bit project.
+Select the ReleaseDyn configuration.
+Press F7 to build.
+
+
+If somehow the asm files don't get built:
+
+Build Settings
+GCC
+
+Tools
+Assembler Name: /usr/bin/nasm
+
+File Types (or Template)
+asm
+Source
+$(AS) "$(FileFullPath)" $(ASFLAGS) $(ObjectSwitch)$(IntermediateDirectory)/$(ObjectName)$(ObjectSuffix) -I$(IncludePath)
+
+
