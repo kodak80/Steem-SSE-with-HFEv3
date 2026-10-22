@@ -51,12 +51,29 @@ struct  TImageHFE:public TImageMfm {
   // STW v2
   virtual int GetNextTransition(WORD& us_to_next_flux);
   virtual void IncBitPosition();
+  // HFEv3
+  // A v3 track stream may contain opcodes (index, bitrate change, skip bits,
+  // random bits), so it can't be addressed as a fixed array of MFM words like
+  // v1. Each side/track is decoded once, on first access, into a plain MFM
+  // word stream (Steem bit order) plus a mask of weak (random) bits.
+  struct THfeV3Track {
+    WORD *Data;  // decoded MFM words, first bit = MSB
+    WORD *Weak;  // weak bit mask (NULL if none), re-randomised on each read
+    WORD nWords;
+    bool Dirty;  // written to by the emulated FDC
+  };
+  bool DecodeV3Track(BYTE side,BYTE track,THfeV3Track &t);
+  bool EncodeV3Track(BYTE track);
+  void FreeV3Tracks();
   // variables
   WORD *TrackData;
   BYTE *ImageData;
   picfileformatheader *file_header;
   pictrack *track_header;
   int image_size;
+  THfeV3Track *V3Tracks; // number_of_track*2 entries, NULL for v1 images
+  THfeV3Track *V3Current; // track loaded by LoadTrack()
+  bool IsV3;
 };
 
 #pragma pack(pop)

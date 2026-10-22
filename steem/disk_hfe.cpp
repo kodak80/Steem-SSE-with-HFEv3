@@ -24,12 +24,22 @@ integration in Steem (disk manager, FDC commands...) is straightforward.
 HFE (Rev.1.1) is a lot like STW, except the bits of each MFM word are reversed
 and data of each side is intertwined, which is the way HxC hardware works.
 
-There's no need to handle later revisions:
-"As already explained V2 and V3 HFE are purely experimental. That's why there is
-currently no documentation. These formats are definitively not supposed to be "adopted".
-Even the V1 wasn't supposed to be adopted : This is a format for the HxC PIC18F based
-floppy emulators, nothing more."
-https://stardot.org.uk/forums/viewtopic.php?t=19676
+HFEv3 (signature "HXCHFEV3") is also supported. It has the same header and
+track layout as v1, but the track stream may contain byte-aligned opcodes,
+recognised by the low nibble of the raw byte being 0xF (bits are stored in
+reverse order, so opcode $F1 is stored as $8F, etc.):
+  $0F NOP       no bitcells
+  $8F INDEX     index pulse position
+  $4F BITRATE   +1 byte: new cell length in 1/36 us units (72 = 2us = DD)
+  $CF SKIPBITS  +1 byte: skip the first 0-7 bits of the following byte
+  $2F RAND      a byte of random (weak) bits
+This is the format written by the HxC software and read by FlashFloppy and
+HxC hardware; FlashFloppy's src/image/hfe.c was used as reference.
+Because Steem's MFM managers expect a fixed array of 16-bit MFM words, each v3
+side/track is decoded once into such an array (resampled to the header bit
+rate where BITRATE opcodes change it, and rotated so that the index is at
+word 0), with a parallel mask of weak bits that are re-randomised on every
+read. Tracks written by the emulator are re-encoded on save.
 ---------------------------------------------------------------------------*/
 
 #include <pch.h>
@@ -49,6 +59,82 @@ https://stardot.org.uk/forums/viewtopic.php?t=19676
 
 #define LOGSECTION LOGSECTION_IMAGE_INFO
 
+// HFEv3 opcodes, as stored in the file (bit-reversed)
+#define HFEV3_OPCODE_MASK 0x0F
+#define HFEV3_NOP         0x0F
+#define HFEV3_INDEX       0x8F
+#define HFEV3_BITRATE     0x4F
+#define HFEV3_SKIPBITS    0xCF
+#define HFEV3_RAND        0x2F
+#define HFEV3_DEFAULT_CELL 72 // 1/36 us units -> 2us, 250kbps DD
+
+static BYTE ReverseByte(BYTE b) {
+  BYTE r=0;
+  for(int i=0;i<8;i++)
+  {
+    r=(BYTE)((r<<1)|(b&1));
+    b>>=1;
+  }
+  return r;
+}
+
+
+static WORD RandomWord() {
+  // RAND_MAX may be only 0x7FFF (MSVC)
+  return (WORD)(((rand()&0xFF)<<8)|(rand()&0xFF));
+}
+
+
+// weak/not weak changes within the gap between two flux transitions
+struct THfeV3Gap {
+  DWORD start[16]; // time (since last transition) where the state changes
+  BYTE weak[16];
+  int n;
+  THfeV3Gap():n(0) {}
+  void Note(DWORD t,BYTE w) {
+    if(!n || (weak[n-1]!=w && n<16))
+    {
+      start[n]=t;
+      weak[n]=w;
+      n++;
+    }
+  }
+  BYTE At(DWORD t) const {
+    BYTE w=0;
+    for(int i=0;i<n && start[i]<=t;i++)
+      w=weak[i];
+    return w;
+  }
+};
+
+
+// growable bit buffer used while decoding a v3 track (one byte per bit)
+struct THfeV3Bits {
+  BYTE *bit,*weak;
+  int n,size;
+  THfeV3Bits():bit(NULL),weak(NULL),n(0),size(0) {}
+  ~THfeV3Bits() { free(bit); free(weak); }
+  bool Add(BYTE b,BYTE w) {
+    if(n==size)
+    {
+      int new_size=size ? size*2 : 65536;
+      BYTE *nb=(BYTE*)realloc(bit,new_size);
+      if(!nb)
+        return false;
+      bit=nb;
+      BYTE *nw=(BYTE*)realloc(weak,new_size);
+      if(!nw)
+        return false;
+      weak=nw;
+      size=new_size;
+    }
+    bit[n]=b;
+    weak[n]=w;
+    n++;
+    return true;
+  }
+};
+
 
 TImageHFE::TImageHFE() {
   Init();
@@ -64,13 +150,22 @@ void TImageHFE::Close() {
   if(fCurrentImage)
   {
     TRACE_LOG("HFE %s image\n",FloppyDisk[Id].WrittenTo?"save and close":"close");
+    if(IsV3 && V3Tracks && ImageData && FloppyDisk[Id].WrittenTo)
+    {
+      // re-encode written tracks into the v3 stream before saving
+      for(int tr=0;tr<NUM_TRACKS;tr++)
+        if(V3Tracks[tr*2].Dirty || V3Tracks[tr*2+1].Dirty)
+          EncodeV3Track((BYTE)tr);
+    }
     FSEEK(fCurrentImage,0,SEEK_SET); // rewind
     if(ImageData && FloppyDisk[Id].WrittenTo)
       FWRITE(ImageData,1,IMAGE_SIZE,fCurrentImage); //save
     fclose(fCurrentImage);
+    FreeV3Tracks(); // before ImageData, which holds the track count
     free(ImageData);
   }
-  Init();  
+  FreeV3Tracks();
+  Init();
 }
 
 
@@ -189,6 +284,21 @@ Bit 0-> Bit 1-> Bit 2-> Bit 3-> Bit 4-> Bit 5-> Bit 6-> Bit 7->(next byte)"
 
 
 WORD TImageHFE::GetImageWord(WORD position) {
+  if(IsV3)
+  {
+    WORD mfm_data=0;
+    if(V3Current && V3Current->Data && V3Current->nWords)
+    {
+      int index=position%V3Current->nWords;
+      mfm_data=V3Current->Data[index];
+      if(V3Current->Weak && V3Current->Weak[index])
+      {
+        WORD mask=V3Current->Weak[index];
+        mfm_data=(WORD)((mfm_data&~mask)|(RandomWord()&mask));
+      }
+    }
+    return mfm_data;
+  }
   int index=ComputeIndex(position);
   WORD mfm_data=0;
   if(TrackData)
@@ -240,13 +350,271 @@ void TImageHFE::Init() {
   fCurrentImage=NULL;
   ImageData=NULL;
   TrackData=NULL;
+  file_header=NULL;
+  track_header=NULL;
+  V3Tracks=NULL;
+  V3Current=NULL;
+  IsV3=false;
   IMAGE_SIZE=0;
+}
+
+
+void TImageHFE::FreeV3Tracks() {
+  if(V3Tracks && file_header)
+  {
+    for(int i=0;i<NUM_TRACKS*2;i++)
+    {
+      free(V3Tracks[i].Data);
+      free(V3Tracks[i].Weak);
+    }
+  }
+  free(V3Tracks);
+  V3Tracks=NULL;
+  V3Current=NULL;
+}
+
+
+bool TImageHFE::DecodeV3Track(BYTE side,BYTE track,THfeV3Track &t) {
+/*  Decode one side of a v3 track into a plain array of MFM words.
+    Bit timing is converted to the nominal cell length given by the header
+    bit rate: each flux transition (1 bit) is placed at the nearest nominal
+    cell. When there's no BITRATE opcode this is an exact copy of the bits.
+*/
+  pictrack &th=track_header[track];
+  int base=th.offset*SECTOR_SIZE;
+  int side_len=th.track_len/2; // bytes of stream data for this side
+  // don't read past the end of the file
+  while(side_len>0 && base+((side_len-1)/256)*512+side*256+(side_len-1)%256
+    >=IMAGE_SIZE)
+    side_len--;
+  int nominal=HFEV3_DEFAULT_CELL;
+  if(file_header->bitRate>=50 && file_header->bitRate<=2000)
+    nominal=(18000+file_header->bitRate/2)/file_header->bitRate;
+  int cell=nominal;
+  DWORD acc=0; // time since last flux transition, 1/36 us units
+  THfeV3Gap gap; // where weak bits are between two transitions
+  int index_bit=-1;
+  int skip=0;
+  const int max_bits=0xFFFF*16;
+  THfeV3Bits bits;
+  bool ok=true;
+  for(int i=0;i<side_len && ok && bits.n<max_bits;)
+  {
+    BYTE raw=ImageData[base+(i/256)*512+side*256+i%256];
+    i++;
+    BYTE weak=0;
+    if((raw&HFEV3_OPCODE_MASK)==HFEV3_OPCODE_MASK)
+    {
+      switch(raw) {
+      case HFEV3_BITRATE:
+        if(i<side_len)
+        {
+          BYTE x=ReverseByte(ImageData[base+(i/256)*512+side*256+i%256]);
+          i++;
+          if(x)
+            cell=x;
+        }
+        skip=0;
+        continue;
+      case HFEV3_SKIPBITS:
+        if(i<side_len)
+        {
+          skip=ReverseByte(ImageData[base+(i/256)*512+side*256+i%256])&7;
+          i++;
+        }
+        continue;
+      case HFEV3_INDEX:
+        if(index_bit<0)
+          index_bit=bits.n+(int)((acc+nominal/2)/nominal);
+        skip=0;
+        continue;
+      case HFEV3_RAND:
+        raw=(BYTE)rand();
+        weak=1;
+        break;
+      case HFEV3_NOP:
+      default: // unknown opcodes are ignored, like FlashFloppy does
+        skip=0;
+        continue;
+      }
+    }
+    for(int k=skip;k<8 && ok;k++)
+    {
+      gap.Note(acc,weak);
+      acc+=cell;
+      if((raw>>k)&1) // bit 0 is transmitted first
+      {
+        int n=(int)((acc+nominal/2)/nominal);
+        if(n<1)
+          n=1;
+        // zero cells take the weak state of the input at their centre
+        for(int j=1;j<n && ok;j++)
+          ok=bits.Add(0,gap.At((DWORD)((2*j-1)*nominal/2)));
+        if(ok)
+          ok=bits.Add(1,weak);
+        acc=0;
+        gap.n=0;
+      }
+    }
+    skip=0;
+  }
+  // remaining cells after the last transition
+  int n_end=(int)((acc+nominal/2)/nominal);
+  for(int j=1;j<=n_end && ok && bits.n<max_bits;j++)
+    ok=bits.Add(0,gap.At((DWORD)((2*j-1)*nominal/2)));
+  if(!ok)
+  {
+    TRACE_LOG("HFEv3 out of memory decoding side %d track %d\n",side,track);
+    return false;
+  }
+  int total=bits.n;
+  if(total>max_bits)
+    total=max_bits;
+  bool unformatted=(total<16);
+  if(unformatted)
+    total=DISK_BYTES_PER_TRACK*16; // no data: random bits
+  t.nWords=(WORD)((total+15)/16);
+  t.Data=(WORD*)calloc(t.nWords,sizeof(WORD));
+  t.Weak=(WORD*)calloc(t.nWords,sizeof(WORD));
+  if(!t.Data || !t.Weak)
+  {
+    free(t.Data);
+    free(t.Weak);
+    t.Data=t.Weak=NULL;
+    t.nWords=0;
+    return false;
+  }
+  // rotate so that the index is at the start of the array, Steem's index
+  int rotate=(index_bit>0 && index_bit<total) ? index_bit : 0;
+  bool any_weak=unformatted;
+  for(int i=0;i<t.nWords*16;i++)
+  {
+    BYTE b,w;
+    if(unformatted)
+    {
+      b=(BYTE)(rand()&1);
+      w=1;
+    }
+    else if(i<total)
+    {
+      int j=(i+rotate)%total;
+      b=bits.bit[j];
+      w=bits.weak[j];
+    }
+    else // pad the last word with MFM zeros ($AAAA)
+    {
+      b=(BYTE)((0xAAAA>>(15-i%16))&1);
+      w=0;
+    }
+    if(b)
+      t.Data[i/16]|=(WORD)(1<<(15-i%16));
+    if(w)
+    {
+      t.Weak[i/16]|=(WORD)(1<<(15-i%16));
+      any_weak=true;
+    }
+  }
+  if(!any_weak)
+  {
+    free(t.Weak);
+    t.Weak=NULL;
+  }
+  t.Dirty=false;
+  TRACE_LOG("HFEv3 decode side %d track %d: %d stream bytes -> %d MFM words, index at bit %d%s\n",
+    side,track,side_len,t.nWords,index_bit,t.Weak?", weak bits":"");
+  return true;
+}
+
+
+bool TImageHFE::EncodeV3Track(BYTE track) {
+/*  Write decoded sides back into the v3 stream of a track. A written side is
+    stored as plain data (an INDEX opcode first, weak bytes as RAND opcodes),
+    an unwritten side is kept as it was. Both sides are padded with NOPs to
+    the same length. The track can't grow beyond the blocks it already has
+    in the file.
+*/
+  pictrack &th=track_header[track];
+  int base=th.offset*SECTOR_SIZE;
+  int blocks=(th.track_len+511)/512;
+  while(blocks>0 && base+blocks*512>IMAGE_SIZE)
+    blocks--;
+  int cap=blocks*256; // bytes per side
+  int orig_len=th.track_len/2;
+  if(orig_len>cap)
+    orig_len=cap;
+  int len=orig_len;
+  for(int s=0;s<NUM_SIDES;s++)
+  {
+    THfeV3Track &t=V3Tracks[track*2+s];
+    if(t.Dirty && t.Data && 1+t.nWords*2>len)
+      len=1+t.nWords*2;
+  }
+  if(len>cap)
+  {
+    TRACE_LOG("HFEv3 track %d too long (%d bytes), truncated to %d\n",track,len,cap);
+    len=cap;
+  }
+  if(len<=0)
+    return false;
+  for(int s=0;s<NUM_SIDES;s++)
+  {
+    THfeV3Track &t=V3Tracks[track*2+s];
+    bool written=(t.Dirty && t.Data);
+    for(int i=(written?0:orig_len);i<len;i++)
+    {
+      BYTE raw=HFEV3_NOP;
+      if(written && i==0)
+        raw=HFEV3_INDEX;
+      else if(written && i-1<t.nWords*2)
+      {
+        int w=(i-1)/2;
+        int shift=((i-1)&1) ? 0 : 8; // high byte goes first
+        BYTE data=(BYTE)(t.Data[w]>>shift);
+        BYTE weak=t.Weak ? (BYTE)(t.Weak[w]>>shift) : 0;
+        if(weak==0xFF)
+          raw=HFEV3_RAND;
+        else
+        {
+          raw=ReverseByte(data);
+          // a run of 4 1s at the start of a byte would look like an opcode,
+          // this can't happen in valid MFM
+          if((raw&HFEV3_OPCODE_MASK)==HFEV3_OPCODE_MASK)
+            raw^=2;
+        }
+      }
+      ImageData[base+(i/256)*512+s*256+i%256]=raw;
+    }
+  }
+  TRACE_LOG("HFEv3 encode track %d: %d -> %d bytes per side\n",track,th.track_len/2,len);
+  th.track_len=(WORD)(len*2);
+  return true;
 }
 
 
 bool TImageHFE::LoadTrack(BYTE side,BYTE track,bool) {
   //ASSERT(Id==0||Id==1);
   bool ok=false;
+  if(IsV3)
+  {
+    if(file_header && side<NUM_SIDES && track<NUM_TRACKS && ImageData
+      && V3Tracks)
+    {
+      THfeV3Track &t=V3Tracks[track*2+side];
+      if(t.Data || DecodeV3Track(side,track,t))
+      {
+        V3Current=&t;
+        TRACKBYTES=t.nWords;
+        FloppyDisk[Id].current_side=side;
+        FloppyDisk[Id].current_track=track;
+        ok=true;
+      }
+    }
+#if defined(SSE_ENABLE_TRACE_LOG)
+    if(!ok)
+      TRACE_LOG("HFEv3 can't load side %d track %d\n",side,track);
+#endif
+    return ok;
+  }
   if(file_header && side<NUM_SIDES && track<NUM_TRACKS && ImageData)
   {
     int position= track_header[track].offset*SECTOR_SIZE;
@@ -306,8 +674,15 @@ bool TImageHFE::Open(char *path) {
       FREAD(ImageData,1,IMAGE_SIZE,fCurrentImage); // read all in memory (2MB OK)
 
       file_header=(picfileformatheader*)ImageData;
-      if(!strncmp("HXCPICFE",(char*)file_header->HEADERSIGNATURE,8))  // it's HFE
+      if(IMAGE_SIZE>=(int)sizeof(picfileformatheader))
+        IsV3=!strncmp("HXCHFEV3",(char*)file_header->HEADERSIGNATURE,8);
+      if(IMAGE_SIZE>=(int)sizeof(picfileformatheader)
+        && (IsV3||!strncmp("HXCPICFE",(char*)file_header->HEADERSIGNATURE,8))
+        && file_header->track_list_offset*SECTOR_SIZE
+        +NUM_TRACKS*(int)sizeof(pictrack)<=IMAGE_SIZE)  // it's HFE
       {
+        if(IsV3)
+          V3Tracks=(THfeV3Track*)calloc(NUM_TRACKS*2,sizeof(THfeV3Track));
 #if defined(SSE_ENABLE_TRACE_LOG) //lots of info
         TRACE_LOG("Open HFE size %d v%d sides %d tracks %d encoding %X mode %X bitRate %d\n",
   IMAGE_SIZE,file_header->formatrevision,file_header->number_of_side,
@@ -320,7 +695,7 @@ TRACE_LOG("RPM %d  WP %d WA %X offset %d step %X TR0/1 %X%X TR1/1 %X%X\n",
 #endif
 
         track_header=(pictrack*)(ImageData+file_header->track_list_offset*SECTOR_SIZE);
-        ok=true;
+        ok=(!IsV3 || V3Tracks!=NULL);
       }
     }
   }//if(fCurrentImage)
@@ -333,6 +708,18 @@ TRACE_LOG("RPM %d  WP %d WA %X offset %d step %X TR0/1 %X%X TR1/1 %X%X\n",
 
 
 void TImageHFE::SetImageWord(WORD position,WORD mfm_data) {
+  if(IsV3)
+  {
+    if(V3Current && V3Current->Data && V3Current->nWords)
+    {
+      int index=position%V3Current->nWords;
+      V3Current->Data[index]=mfm_data;
+      if(V3Current->Weak)
+        V3Current->Weak[index]=0; // written bits are no longer weak
+      V3Current->Dirty=true;
+    }
+    return;
+  }
   int index=ComputeIndex(position);
   WORD mirror_mfm=MirrorMFM(mfm_data); // reverse bits
   if(TrackData)//&&index<nTrackBytes)
