@@ -55,14 +55,25 @@ jobs:
 
       - name: Build Steem-D3D ${{ matrix.platform }}
         shell: pwsh
-        run: >
-          msbuild windows-build\VS2019\SteemVS2019.vcxproj
-          /m /nologo /v:minimal
-          /p:Configuration=Steem-D3D
-          /p:Platform=${{ matrix.platform }}
-          /p:PlatformToolset=v143
-          /p:PostBuildEventUseInBuild=false
-          /p:TreatWarningAsError=false
+        run: |
+          msbuild windows-build\VS2019\SteemVS2019.vcxproj `
+            /m /nologo /v:minimal `
+            /p:Configuration=Steem-D3D `
+            /p:Platform=${{ matrix.platform }} `
+            /p:PlatformToolset=v143 `
+            /p:PostBuildEventUseInBuild=false `
+            /p:TreatWarningAsError=false `
+            "/flp:logfile=build.log;verbosity=normal"
+          $rc = $LASTEXITCODE
+          if ($rc -ne 0) {
+            # report errors as one annotation so they're visible without
+            # downloading the log
+            $err = Select-String -Path build.log -Pattern ': (fatal )?error |error MSB|error LNK' |
+                   ForEach-Object { $_.Line.Trim() } | Select-Object -Unique -First 40
+            $msg = ($err -join "`n") -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
+            Write-Output "::error title=Build errors (${{ matrix.platform }})::$msg"
+          }
+          exit $rc
 
       - name: Package
         shell: pwsh
