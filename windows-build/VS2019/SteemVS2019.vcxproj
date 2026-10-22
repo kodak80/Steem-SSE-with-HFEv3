@@ -1730,6 +1730,65 @@ rem del $(IntDir)main.obj
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\3rdparty\68K_Disassembler\Disassembler.cpp" />
+    <ClCompile Include="..\..\3rdparty\curl\curlsse.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\C3DBuffer.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\C3DListener.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\C3DSegment.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CAPathPerformance.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CAudioPath.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CCollection.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CDirectMusic.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CDLSLoader.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CDMusicException.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CInputPort.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CInstrument.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CMasterClock.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CMidiPort.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\COutputPort.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CPerformance.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CPortPerformance.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CSampleInstrument.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\CSegment.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\directmidi\Dmhelp.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="..\..\3rdparty\6301\6301.c">
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Steem-DD|Win32'">false</WholeProgramOptimization>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug - draw_c|Win32'">NotUsing</PrecompiledHeader>

@@ -1,6 +1,29 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <ClCompile Include="..\..\3rdparty\68K_Disassembler\Disassembler.cpp" />
+    <ClCompile Include="..\..\3rdparty\curl\curlsse.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\C3DBuffer.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\C3DListener.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\C3DSegment.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CAPathPerformance.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CAudioPath.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CCollection.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CDirectMusic.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CDLSLoader.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CDMusicException.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CInputPort.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CInstrument.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CMasterClock.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CMidiPort.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\COutputPort.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CPerformance.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CPortPerformance.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CSampleInstrument.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\CSegment.cpp" />
+    <ClCompile Include="..\..\3rdparty\directmidi\Dmhelp.cpp" />
+  </ItemGroup>
+  <ItemGroup>
     <Object Include="..\..\steem\asm\asm_draw_VC.obj">
       <Filter>obj</Filter>
     </Object>
