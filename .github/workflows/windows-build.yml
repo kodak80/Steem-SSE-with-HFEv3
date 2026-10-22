@@ -49,6 +49,11 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path "$env:DXSDK_DIR" | Out-Null
           Copy-Item -Recurse -Force dxsdk\DXSDK\* "$env:DXSDK_DIR"
+          # DirectMusic headers were dropped from DirectX SDKs after 2007;
+          # Steem bundles the ones it needs with DirectMidi
+          foreach ($h in 'dmusici.h','dmplugin.h','dxerr9.h') {
+            Copy-Item -Force "3rdparty\directmidi\$h" "$($env:DXSDK_DIR)Include\"
+          }
           Get-ChildItem "$env:DXSDK_DIR"
 
       - uses: microsoft/setup-msbuild@v2
