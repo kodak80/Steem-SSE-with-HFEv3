@@ -55,9 +55,16 @@ jobs:
           foreach ($h in 'dmusici.h','dmplugin.h','dxerr9.h') {
             Copy-Item -Force "3rdparty\directmidi\$h" "$($env:DXSDK_DIR)Include\"
           }
-          # some project configurations use this path for the headers
-          New-Item -ItemType Directory -Force -Path "C:\Program Files\Microsoft DirectX SDK" | Out-Null
-          Copy-Item -Recurse -Force "$($env:DXSDK_DIR)Include" "C:\Program Files\Microsoft DirectX SDK\"
+          # Steem.vcxproj puts this path before the Windows SDK, so it only
+          # gets headers the Windows SDK lacks (old DXGI headers there would
+          # break the Windows SDK's own)
+          $legacy = "C:\Program Files\Microsoft DirectX SDK\Include"
+          New-Item -ItemType Directory -Force -Path $legacy | Out-Null
+          Copy-Item -Force "$($env:DXSDK_DIR)Include\d3dx9*" $legacy
+          foreach ($h in 'dmusici.h','dmplugin.h','dxerr9.h') {
+            Copy-Item -Force "3rdparty\directmidi\$h" $legacy
+          }
+          Get-ChildItem $legacy
           Get-ChildItem "$env:DXSDK_DIR"
 
       - uses: microsoft/setup-msbuild@v2
