@@ -1,0 +1,103 @@
+name: Windows build
+
+# Builds Steem SSE (Steem-D3D configuration, x64 and Win32) with the
+# VS2019 project, retargeted to the toolset available on the runner.
+# Pushing a tag starting with "v" also publishes a GitHub release.
+
+on:
+  push:
+    branches: [ main, hfev3 ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DXSDK_URL: https://download.microsoft.com/download/A/E/7/AE743F1F-632B-4809-87A9-AA1BB3458E31/DXSDK_Jun10.exe
+  DXSDK_DIR: C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\
+
+jobs:
+  build:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ x64, Win32 ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache DirectX SDK (June 2010)
+        id: dxcache
+        uses: actions/cache@v4
+        with:
+          path: dxsdk
+          key: dxsdk-jun2010-headers-libs
+
+      - name: Download DirectX SDK (June 2010)
+        if: steps.dxcache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest $env:DXSDK_URL -OutFile DXSDK_Jun10.exe
+          7z x DXSDK_Jun10.exe DXSDK/Include -odxsdk -y | Out-Null
+          7z x DXSDK_Jun10.exe DXSDK/Lib -odxsdk -y | Out-Null
+          Get-ChildItem dxsdk\DXSDK
+
+      - name: Install DirectX SDK headers and libs
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:DXSDK_DIR" | Out-Null
+          Copy-Item -Recurse -Force dxsdk\DXSDK\* "$env:DXSDK_DIR"
+          Get-ChildItem "$env:DXSDK_DIR"
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Build Steem-D3D ${{ matrix.platform }}
+        shell: pwsh
+        run: >
+          msbuild windows-build\VS2019\SteemVS2019.vcxproj
+          /m /nologo /v:minimal
+          /p:Configuration=Steem-D3D
+          /p:Platform=${{ matrix.platform }}
+          /p:PlatformToolset=v143
+          /p:PostBuildEventUseInBuild=false
+          /p:TreatWarningAsError=false
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Recurse -Path windows-build -Filter *.exe |
+                 Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) { throw "No executable produced" }
+          Write-Host "Built $($exe.FullName)"
+          $suffix = if ('${{ matrix.platform }}' -eq 'x64') { '64' } else { '32' }
+          New-Item -ItemType Directory -Force -Path pkg | Out-Null
+          Copy-Item $exe.FullName "pkg\Steem$suffix-HFEv3.exe"
+          Copy-Item release-notes-hfev3.txt pkg\README-HFEv3.txt
+          Copy-Item gpl-3.0.txt pkg\
+          Compress-Archive -Path pkg\* -DestinationPath "Steem-SSE-HFEv3-${{ matrix.platform }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Steem-SSE-HFEv3-${{ matrix.platform }}
+          path: Steem-SSE-HFEv3-${{ matrix.platform }}.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip
+          --title "Steem SSE 4.2.1 with HFEv3 support (${GITHUB_REF_NAME})"
+          --notes-file release-notes-hfev3.txt
+          --prerelease
