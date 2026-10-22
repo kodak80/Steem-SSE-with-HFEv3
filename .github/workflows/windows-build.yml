@@ -1,7 +1,8 @@
 name: Windows build
 
-# Builds Steem SSE (Steem-D3D configuration, x64 and Win32) with the
-# VS2019 project, retargeted to the toolset available on the runner.
+# Builds Steem SSE (Steem-D3D-Release configuration, x64 and Win32) with
+# the VS2019 project Steem.vcxproj (SteemVS2019.vcxproj is out of date in
+# this branch), retargeted to the toolset available on the runner.
 # Pushing a tag starting with "v" also publishes a GitHub release.
 
 on:
@@ -54,16 +55,19 @@ jobs:
           foreach ($h in 'dmusici.h','dmplugin.h','dxerr9.h') {
             Copy-Item -Force "3rdparty\directmidi\$h" "$($env:DXSDK_DIR)Include\"
           }
+          # some project configurations use this path for the headers
+          New-Item -ItemType Directory -Force -Path "C:\Program Files\Microsoft DirectX SDK" | Out-Null
+          Copy-Item -Recurse -Force "$($env:DXSDK_DIR)Include" "C:\Program Files\Microsoft DirectX SDK\"
           Get-ChildItem "$env:DXSDK_DIR"
 
       - uses: microsoft/setup-msbuild@v2
 
-      - name: Build Steem-D3D ${{ matrix.platform }}
+      - name: Build Steem-D3D-Release ${{ matrix.platform }}
         shell: pwsh
         run: |
-          msbuild windows-build\VS2019\SteemVS2019.vcxproj `
+          msbuild windows-build\VS2019\Steem.vcxproj `
             /m /nologo /v:minimal `
-            /p:Configuration=Steem-D3D `
+            /p:Configuration=Steem-D3D-Release `
             /p:Platform=${{ matrix.platform }} `
             /p:PlatformToolset=v143 `
             /p:PostBuildEventUseInBuild=false `
