@@ -1,8 +1,9 @@
 name: Windows build
 
-# Builds Steem SSE (Steem-D3D configuration, x64 and Win32) with the
-# VS2019 project, retargeted to the toolset available on the runner.
-# SSE_RELEASE is forced (via the CL variable) so x64 isn't a beta build.
+# Builds Steem SSE (Steem-D3D-Release, x64 and Win32) with Steem.vcxproj,
+# the project the Steem SSE author makes releases with (its settings match
+# the VS2008 release configurations), using the VS2019 toolset (v142) like
+# the author, or v143 if the runner doesn't have v142.
 # Pushing a tag starting with "v", or a branch named release/<tag>, also
 # publishes a GitHub (pre)release named after the tag.
 
@@ -70,16 +71,19 @@ jobs:
 
       - uses: microsoft/setup-msbuild@v2
 
-      - name: Build Steem-D3D ${{ matrix.platform }}
+      - name: Build Steem-D3D-Release ${{ matrix.platform }}
         shell: pwsh
-        env:
-          CL: /DSSE_RELEASE
         run: |
-          msbuild windows-build\VS2019\SteemVS2019.vcxproj `
+          $toolset = 'v142'
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          if (-not (Test-Path "$vs\MSBuild\Microsoft\VC\v170\Platforms\x64\PlatformToolsets\v142")) { $toolset = 'v143' }
+          Write-Output "Toolset: $toolset"
+          Write-Output "::notice title=Toolset (${{ matrix.platform }})::$toolset"
+          msbuild windows-build\VS2019\Steem.vcxproj `
             /m /nologo /v:minimal `
-            /p:Configuration=Steem-D3D `
+            /p:Configuration=Steem-D3D-Release `
             /p:Platform=${{ matrix.platform }} `
-            /p:PlatformToolset=v143 `
+            /p:PlatformToolset=$toolset `
             /p:PostBuildEventUseInBuild=false `
             /p:TreatWarningAsError=false `
             "/flp:logfile=build.log;verbosity=normal"

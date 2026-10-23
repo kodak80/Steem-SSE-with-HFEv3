@@ -576,12 +576,6 @@
     <ClCompile Include="..\..\steem\disk_stx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\3rdparty\various\cubase3.c">
-      <Filter>Third Party\various</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\3rdparty\various\cubase2.c">
-      <Filter>Third Party\various</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\3rdparty\directmidi\DSUTIL\DSUTIL.CPP">
       <Filter>Third Party\DirectMidi\DSUTIL</Filter>
     </ClCompile>
