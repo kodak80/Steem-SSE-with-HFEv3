@@ -1,7 +1,7 @@
 Steem SSE 4.2.1 (r1511) with HFEv3 support
 ===========================================
 
-Unofficial test build of Steem SSE from the SourceForge "V4.2.1 Releases"
+Unofficial build of Steem SSE from the SourceForge "V4.2.1 Releases"
 branch (r1511), adding support for HFE v3 floppy images ("HXCHFEV3", as
 written by the HxC Floppy Emulator software and used by FlashFloppy and HxC
 hardware). Source: https://github.com/kodak80/Steem-SSE-with-HFEv3

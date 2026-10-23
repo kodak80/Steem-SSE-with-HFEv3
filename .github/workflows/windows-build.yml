@@ -5,7 +5,8 @@ name: Windows build
 # the VS2008 release configurations), using the VS2019 toolset (v142) like
 # the author, or v143 if the runner doesn't have v142.
 # Pushing a tag starting with "v", or a branch named release/<tag>, also
-# publishes a GitHub (pre)release named after the tag.
+# publishes a GitHub release named after the tag: a pre-release when the
+# name contains "test"; a final release also deletes the test releases.
 
 on:
   push:
@@ -146,8 +147,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF_NAME#release/}"
+          PRE=""
+          case "$TAG" in *test*) PRE="--prerelease";; esac
           gh release create "$TAG" dist/*.zip \
             --target "$GITHUB_SHA" \
             --title "Steem SSE 4.2.1 with HFEv3 support ($TAG)" \
             --notes-file release-notes-hfev3.txt \
-            --prerelease
+            $PRE
+
+      - name: Remove test releases after a final release
+        if: ${{ !contains(github.ref_name, 'test') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for t in $(gh release list --limit 100 --json tagName --jq '.[].tagName' | grep -- '-test'); do
+            echo "Deleting test release $t"
+            gh release delete "$t" --yes --cleanup-tag
+            git push origin --delete "release/$t" 2>/dev/null || true
+          done
