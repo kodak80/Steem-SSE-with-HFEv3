@@ -69,6 +69,18 @@ jobs:
           Get-ChildItem $legacy
           Get-ChildItem "$env:DXSDK_DIR"
 
+      - name: Install VS2019 (v142) build tools
+        shell: pwsh
+        run: |
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $vs = & "$installer\vswhere.exe" -latest -property installationPath
+          $p = Start-Process -Wait -PassThru -FilePath "$installer\vs_installer.exe" -ArgumentList @(
+            'modify', '--installPath', "`"$vs`"",
+            '--add', 'Microsoft.VisualStudio.Component.VC.v142.x86.x64',
+            '--add', 'Microsoft.VisualStudio.Component.VC.v142.ATL',
+            '--quiet', '--norestart', '--nocache')
+          Write-Output "vs_installer exit code $($p.ExitCode)"
+
       - uses: microsoft/setup-msbuild@v2
 
       - name: Build Steem-D3D-Release ${{ matrix.platform }}
