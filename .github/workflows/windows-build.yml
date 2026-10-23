@@ -79,7 +79,9 @@ jobs:
             '--add', 'Microsoft.VisualStudio.Component.VC.v142.x86.x64',
             '--add', 'Microsoft.VisualStudio.Component.VC.v142.ATL',
             '--quiet', '--norestart', '--nocache')
-          Write-Output "vs_installer exit code $($p.ExitCode)"
+          $ts = (Get-ChildItem "$vs\MSBuild\Microsoft\VC\*\Platforms\x64\PlatformToolsets" -Directory -ErrorAction SilentlyContinue |
+                 ForEach-Object { Get-ChildItem $_.FullName -Directory } | ForEach-Object { $_.Parent.Parent.Parent.Parent.Name + '/' + $_.Name }) -join ', '
+          Write-Output "::notice title=vs_installer::exit $($p.ExitCode); toolsets: $ts"
 
       - uses: microsoft/setup-msbuild@v2
 
@@ -88,7 +90,7 @@ jobs:
         run: |
           $toolset = 'v142'
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-          if (-not (Test-Path "$vs\MSBuild\Microsoft\VC\v170\Platforms\x64\PlatformToolsets\v142")) { $toolset = 'v143' }
+          if (-not (Get-ChildItem "$vs\MSBuild\Microsoft\VC\*\Platforms\x64\PlatformToolsets\v142" -ErrorAction SilentlyContinue)) { $toolset = 'v143' }
           Write-Output "Toolset: $toolset"
           Write-Output "::notice title=Toolset (${{ matrix.platform }})::$toolset"
           msbuild windows-build\VS2019\Steem.vcxproj `
