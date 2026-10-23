@@ -767,8 +767,16 @@ TRACE_LOG("RPM %d  WP %d WA %X offset %d step %X TR0/1 %X%X TR1/1 %X%X\n",
   }//if(fCurrentImage)
   if(!ok)
     Close();
-  else 
+  else
+  {
     FloppyDrive[Id].MfmManager=this;
+    // HFE tracks are a plain bit stream: sync marks and bytes needn't start on
+    // a 16-bit word boundary (they rarely do in images made by HxC, Gotek,
+    // GTi...), so the word-based reader never finds the sector IDs and TOS
+    // keeps retrying the boot sector. The bit-level path (DPLL) handles any
+    // alignment, like a real drive.
+    LowLevel=true;
+  }
   return ok;
 }
 
