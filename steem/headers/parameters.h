@@ -323,6 +323,17 @@ Some STFs                32.02480    8.0071
 #define STEEM_CHECKURL "https://downloads.sourceforge.net/project/steemsse/"
 #define STEEM_VERINFO "version.txt"
 #define STEEM_WEB_BUG_REPORTS "https://sourceforge.net/p/steemsse/forum/bugs/"
+// HFEv3 fork: https://github.com/kodak80/Steem-SSE-with-HFEv3
+// The release workflow passes the release name as HFEV3_VER (e.g. 1, test5,
+// dev-41cd931), shown after the Steem version as "HFEv3-1".
+#define HFEV3_WEB "https://github.com/kodak80/Steem-SSE-with-HFEv3"
+#define HFEV3_STR2(x) #x
+#define HFEV3_STR(x) HFEV3_STR2(x)
+#ifdef HFEV3_VER
+#define HFEV3_VERSION HFEV3_STR(HFEV3_VER)
+#else
+#define HFEV3_VERSION "dev"
+#endif
 #define DIDATABASE_WEB "http://steem.atari.st/database.htm" // still online
 #define STEEM_WEB_LEGACY "http://steem.atari.st/" // for links in Disk Image Database
 #else

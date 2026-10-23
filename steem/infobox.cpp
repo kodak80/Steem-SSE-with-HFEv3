@@ -147,6 +147,7 @@ void TGeneralInfo::CreateAboutPage() {
   Text+=" DrawC"; // should be all now
 #endif
   Text+="\n";
+  Text+="HFEv3 support: " HFEV3_WEB "\n";
 #else
   EasyStr Text=EasyStr("Steem Engine v")+(char*)stem_version_text+" (built " __DATE__" "+"- "__TIME__")\n";
   Text+="Written by Anthony && Russell Hayward\n";

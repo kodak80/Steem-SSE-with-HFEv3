@@ -94,6 +94,14 @@ jobs:
           if (-not (Get-ChildItem "$vs\MSBuild\Microsoft\VC\*\Platforms\x64\PlatformToolsets\v142" -ErrorAction SilentlyContinue)) { $toolset = 'v143' }
           Write-Output "Toolset: $toolset"
           Write-Output "::notice title=Toolset (${{ matrix.platform }})::$toolset"
+          # HFEv3 version shown in Steem's build info: the part of the release
+          # name after "-hfev3-" (v4.2.1-hfev3-2 -> 2), else dev-<commit>.
+          # CL can't contain '=', cl.exe accepts '#' instead.
+          $ver = "dev-$($env:GITHUB_SHA.Substring(0,7))"
+          $name = $env:GITHUB_REF_NAME -replace '^release/',''
+          if (($env:GITHUB_REF -like 'refs/heads/release/*' -or $env:GITHUB_REF -like 'refs/tags/*') -and $name -match '-hfev3-(.+)$') { $ver = $Matches[1] }
+          $env:CL = "/DHFEV3_VER#$ver"
+          Write-Output "::notice title=HFEv3 version (${{ matrix.platform }})::$ver"
           msbuild windows-build\VS2019\Steem.vcxproj `
             /m /nologo /v:minimal `
             /p:Configuration=Steem-D3D-Release `

@@ -609,6 +609,9 @@ bool Initialise(int &RetVal) { // called once by WinMain()
 #ifdef SSE_VID_DD
   strcat(gAppBuildInfo," DD");
 #endif
+#ifdef HFEV3_VERSION
+  strcat(gAppBuildInfo," HFEv3-" HFEV3_VERSION); // HFEv3 fork
+#endif
 
   strcpy((char*)stem_window_title,gAppName);
 
