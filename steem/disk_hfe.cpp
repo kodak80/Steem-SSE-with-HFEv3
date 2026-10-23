@@ -802,6 +802,15 @@ void TImageHFE::SetImageWord(WORD position,WORD mfm_data) {
 
 
 void TImageHFE::SetMfmData(WORD position,WORD mfm_data) {
+/*  Write Sector: the bit-level reader has just found the sector ID and read
+    the gap after it, so the head is exactly at BitPosition. Starting the
+    write from the drive's byte counter instead (position) puts the data
+    field a few bits off, since HFE syncs aren't word-aligned; that could
+    overwrite the sector's own ID, and the next access to it failed with
+    Record Not Found (Crazy Cars high scores).
+*/
+  if(LowLevel && position!=0xFFFF && Fdc.CommandType()==2)
+    position=0xFFFF; // carry on from where the reader left the head
   TImageMfm::SetMfmData(position,mfm_data);
   if(!LowLevel)
   {

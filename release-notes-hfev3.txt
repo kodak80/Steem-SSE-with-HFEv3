@@ -12,6 +12,10 @@ What's new
   boot (TOS kept retrying the boot sector, Record Not Found). Their sync
   marks don't fall on 16-bit word boundaries, which Steem's word-based HFE
   reader needed. HFE images now always use Steem's bit-level (DPLL) reader.
+- FIX: writing a sector to an HFE image could land a few bits off and wreck
+  the sector's own header (games saving high scores, e.g. Crazy Cars, left a
+  broken save that hung on the next boot). Delete any .sav.hfe made by an
+  earlier test build.
 - v3 opcodes are handled: index position, bit rate changes, skipped bits and
   random (weak) bits. Weak bits read differently on each revolution.
 - Save copies, like the GTi Gotek interface: writing to an HFE image (v1 or
