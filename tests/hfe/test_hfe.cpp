@@ -73,6 +73,8 @@ static Words ReadTrack(TImageHFE&im,BYTE side,BYTE track,bool*ok=NULL){
   for(int i=0;i<n;i++) w.push_back(im.GetImageWord((WORD)i));
   return w;
 }
+static Bytes ReadFile(const char*path){Bytes b;FILE*f=fopen(path,"rb");if(!f)return b;int c;while((c=fgetc(f))!=EOF)b.push_back((BYTE)c);fclose(f);return b;}
+static bool Exists(const char*path){FILE*f=fopen(path,"rb");if(f)fclose(f);return f!=NULL;}
 static int Diff(const Words&a,const Words&b){if(a.size()!=b.size())return -2;for(size_t i=0;i<a.size();i++)if(a[i]!=b[i])return (int)i;return -1;}
 
 int main(){
@@ -166,7 +168,9 @@ int main(){
     Bytes raw=WordsToRaw(X),st;
     for(size_t i=0;i<raw.size();i++) st.push_back(i>=3000&&i<3010?0x2F:raw[i]);
     std::vector<Bytes> s0(2,st),s1(2,WordsToRaw(Y));
+    remove("t_v3f.sav.hfe");
     WriteHfe("t_v3f.hfe",true,s0,s1);
+    Bytes orig=ReadFile("t_v3f.hfe");
     CHECK(im.Open((char*)"t_v3f.hfe"),"open f");
     Words a1=ReadTrack(im,0,1),a2=ReadTrack(im,0,1);
     CHECK(a1.size()==X.size(),"rand size");
@@ -187,9 +191,10 @@ int main(){
     im.Close();
     FloppyDisk[0].WrittenTo=false;
 
-    FILE*fp=fopen("t_v3f.hfe","rb");char sig[9]={0};fread(sig,1,8,fp);fclose(fp);
-    CHECK(!strcmp(sig,"HXCHFEV3"),"still v3 after save (%s)",sig);
-    CHECK(im.Open((char*)"t_v3f.hfe"),"reopen f");
+    CHECK(ReadFile("t_v3f.hfe")==orig,"original image untouched");
+    Bytes sav=ReadFile("t_v3f.sav.hfe");
+    CHECK(sav.size()==orig.size() && !memcmp(&sav[0],"HXCHFEV3",8),"save copy written as v3 (%d bytes)",(int)sav.size());
+    CHECK(im.Open((char*)"t_v3f.hfe"),"reopen f (loads the save copy)");
     Words r1=ReadTrack(im,0,1),r2=ReadTrack(im,0,1);
     int bad=0,weakvar=0;
     for(size_t i=0;i<Z.size()&&i<r1.size();i++){
@@ -211,6 +216,7 @@ int main(){
   {
     Bytes raw=WordsToRaw(X); Bytes shortside(raw.begin(),raw.begin()+6000*2); // 6000 words
     std::vector<Bytes> s0(1,shortside),s1(1,shortside);
+    remove("t_v3g.sav.hfe");
     WriteHfe("t_v3g.hfe",true,s0,s1);
     CHECK(im.Open((char*)"t_v3g.hfe"),"open g");
     Words a=ReadTrack(im,0,0);
@@ -223,6 +229,49 @@ int main(){
     Words xs(X.begin(),X.begin()+6000);
     CHECK(Diff(c,xs)==-1,"unwritten side padded with NOPs reads same, diff %d",Diff(c,xs));
     im.Close();
+  }
+
+  // I. save copies, GTi style, also for v1
+  {
+    remove("t_v1i.sav.hfe");
+    std::vector<Bytes> s0(1,WordsToRaw(X)),s1(1,WordsToRaw(Y));
+    WriteHfe("t_v1i.hfe",false,s0,s1);
+    Bytes orig=ReadFile("t_v1i.hfe");
+    // no write -> no save copy
+    CHECK(im.Open((char*)"t_v1i.hfe"),"open i");
+    ReadTrack(im,0,0); im.Close();
+    CHECK(!Exists("t_v1i.sav.hfe"),"no save copy without writes");
+    // first write goes to the save copy
+    CHECK(im.Open((char*)"t_v1i.hfe"),"open i 2");
+    im.LoadTrack(0,0); im.SetImageWord(10,0x1234);
+    FloppyDisk[0].WrittenTo=true;im.Close();FloppyDisk[0].WrittenTo=false;
+    CHECK(ReadFile("t_v1i.hfe")==orig,"v1 original untouched");
+    CHECK(Exists("t_v1i.sav.hfe"),"v1 save copy created");
+    // the save copy is loaded from now on, and updated in place
+    CHECK(im.Open((char*)"t_v1i.hfe"),"open i 3");
+    Words a=ReadTrack(im,0,0);
+    CHECK(a.size()>10 && a[10]==0x1234,"save copy loaded");
+    im.SetImageWord(11,0x5678);
+    FloppyDisk[0].WrittenTo=true;im.Close();FloppyDisk[0].WrittenTo=false;
+    CHECK(!Exists("t_v1i.sav.sav.hfe"),"save copy updated in place, no .sav.sav");
+    CHECK(ReadFile("t_v1i.hfe")==orig,"v1 original still untouched");
+    CHECK(im.Open((char*)"t_v1i.sav.hfe"),"save copy opens directly");
+    a=ReadTrack(im,0,0);
+    CHECK(a[10]==0x1234 && a[11]==0x5678,"both writes in save copy");
+    im.Close();
+    // deleting the save copy goes back to the original
+    remove("t_v1i.sav.hfe");
+    CHECK(im.Open((char*)"t_v1i.hfe"),"open i 4");
+    a=ReadTrack(im,0,0);
+    CHECK(a[10]==X[10],"original after deleting save copy");
+    im.Close();
+    // per-dongle style names (Game.sav.XXXX.hfe) count as saves too
+    rename("t_v1i.hfe","t_v1i.sav.80FE.hfe");
+    CHECK(im.Open((char*)"t_v1i.sav.80FE.hfe"),"open tagged save");
+    im.LoadTrack(0,0); im.SetImageWord(12,0x9ABC);
+    FloppyDisk[0].WrittenTo=true;im.Close();FloppyDisk[0].WrittenTo=false;
+    CHECK(!Exists("t_v1i.sav.80FE.sav.hfe"),"tagged save updated in place");
+    remove("t_v1i.sav.80FE.hfe");
   }
 
   // H. empty / truncated tracks don't crash

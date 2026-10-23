@@ -40,6 +40,11 @@ side/track is decoded once into such an array (resampled to the header bit
 rate where BITRATE opcodes change it, and rotated so that the index is at
 word 0), with a parallel mask of weak bits that are re-randomised on every
 read. Tracks written by the emulator are re-encoded on save.
+
+Writes never change the original image file. Like the GTi Gotek interface,
+the image is saved as Game.sav.hfe beside Game.hfe, and when Game.hfe is
+inserted again the save copy is loaded instead. Delete Game.sav.hfe to go back
+to the original. A .sav.hfe inserted directly is updated in place.
 ---------------------------------------------------------------------------*/
 
 #include <pch.h>
@@ -136,6 +141,31 @@ struct THfeV3Bits {
 };
 
 
+static bool MakeSavePath(const char *path,char *save_path,size_t size) {
+/*  Game.hfe -> Game.sav.hfe, as the GTi names its saves. Returns false when
+    path is already a save copy (Game.sav.hfe, Game.sav.XXXX.hfe), or if the
+    name is too long.
+*/
+  const char *name=path;
+  for(const char *p=path;*p;p++)
+    if(*p=='/'||*p=='\\'||*p==':')
+      name=p+1;
+  const char *dot=strrchr(name,'.');
+  size_t base_len=dot ? (size_t)(dot-path) : strlen(path);
+  // already a save copy?
+  for(const char *p=name;p+4<=path+base_len;p++)
+    if(p[0]=='.' && (p[1]=='s'||p[1]=='S') && (p[2]=='a'||p[2]=='A')
+      && (p[3]=='v'||p[3]=='V') && (p+4==path+base_len || p[4]=='.'))
+      return false;
+  if(strlen(path)+4>=size)
+    return false;
+  memcpy(save_path,path,base_len);
+  strcpy(save_path+base_len,".sav");
+  strcat(save_path,path+base_len); // extension, if any
+  return true;
+}
+
+
 TImageHFE::TImageHFE() {
   Init();
 }
@@ -157,9 +187,24 @@ void TImageHFE::Close() {
         if(V3Tracks[tr*2].Dirty || V3Tracks[tr*2+1].Dirty)
           EncodeV3Track((BYTE)tr);
     }
-    FSEEK(fCurrentImage,0,SEEK_SET); // rewind
     if(ImageData && FloppyDisk[Id].WrittenTo)
-      FWRITE(ImageData,1,IMAGE_SIZE,fCurrentImage); //save
+    {
+      if(SavePath[0]) // first write: the original stays untouched
+      {
+        FILE *fp=fopen(SavePath,"wb");
+        if(fp)
+        {
+          FWRITE(ImageData,1,IMAGE_SIZE,fp);
+          fclose(fp);
+        }
+        TRACE_LOG("HFE save copy %s %s\n",SavePath,fp?"written":"can't be created");
+      }
+      else // the save copy itself: update it
+      {
+        FSEEK(fCurrentImage,0,SEEK_SET); // rewind
+        FWRITE(ImageData,1,IMAGE_SIZE,fCurrentImage); //save
+      }
+    }
     fclose(fCurrentImage);
     FreeV3Tracks(); // before ImageData, which holds the track count
     free(ImageData);
@@ -355,6 +400,7 @@ void TImageHFE::Init() {
   V3Tracks=NULL;
   V3Current=NULL;
   IsV3=false;
+  SavePath[0]=0;
   IMAGE_SIZE=0;
 }
 
@@ -659,9 +705,29 @@ WORD TImageHFE::MirrorMFM(WORD mfm_word) {
 bool TImageHFE::Open(char *path) {
   bool ok=false;
   Close(); // make sure previous image is correctly closed
-  fCurrentImage=fopen(path,"rb+"); // try to open existing file
-  if(!fCurrentImage) // maybe it's read-only
-    fCurrentImage=fopen(path,"rb");
+  // use the save copy if there is one, otherwise remember where it goes
+  char save_path[sizeof(SavePath)];
+  char *open_path=path;
+  if(MakeSavePath(path,save_path,sizeof(save_path)))
+  {
+    FILE *fp=fopen(save_path,"rb");
+    if(fp)
+    {
+      fclose(fp);
+      open_path=save_path;
+      TRACE_LOG("HFE %s: using save copy %s\n",path,save_path);
+    }
+    else
+      strcpy(SavePath,save_path);
+  }
+  if(SavePath[0])
+    fCurrentImage=fopen(open_path,"rb"); // the original is never written
+  else
+  {
+    fCurrentImage=fopen(open_path,"rb+"); // try to open existing file
+    if(!fCurrentImage) // maybe it's read-only
+      fCurrentImage=fopen(open_path,"rb");
+  }
   //ASSERT(fCurrentImage);
   if(fCurrentImage) // image exists
   {

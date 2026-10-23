@@ -74,6 +74,11 @@ struct  TImageHFE:public TImageMfm {
   THfeV3Track *V3Tracks; // number_of_track*2 entries, NULL for v1 images
   THfeV3Track *V3Current; // track loaded by LoadTrack()
   bool IsV3;
+  // Save copy, like the GTi: writes never change the original image, they
+  // are saved as Game.sav.hfe beside it, and that copy is loaded instead of
+  // the original from then on. Empty when the open file is itself the save
+  // copy (written in place).
+  char SavePath[1024];
 };
 
 #pragma pack(pop)

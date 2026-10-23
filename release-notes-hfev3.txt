@@ -10,10 +10,15 @@ What's new
 - HFE v3 images can be inserted like v1 HFE images.
 - v3 opcodes are handled: index position, bit rate changes, skipped bits and
   random (weak) bits. Weak bits read differently on each revolution.
-- Writing to a v3 image is saved back in v3 format when the disk is ejected
-  or Steem is closed. A written track can't grow beyond the space it already
-  has in the file.
-- HFE v1 images behave as before.
+- Save copies, like the GTi Gotek interface: writing to an HFE image (v1 or
+  v3) never changes the original. When the disk is ejected or Steem is
+  closed, the changes are saved as Game.sav.hfe beside Game.hfe, and from
+  then on inserting Game.hfe loads Game.sav.hfe instead. Delete the .sav.hfe
+  file to go back to the original. A .sav.hfe inserted directly is updated
+  in place.
+- v3 images are saved in v3 format. A written track can't grow beyond the
+  space it already has in the file.
+- HFE v1 images otherwise behave as before.
 
 Notes
 - This build is made automatically with Visual Studio 2022 from the VS2019
@@ -22,6 +27,5 @@ Notes
 - Only Steem itself is included. For optional extras (plugins, DLLs for IPF
   or archive support, etc.), copy this executable into an existing Steem SSE
   4.2.1 folder.
-- Please back up HFE images before letting Steem write to them.
 
 Steem SSE is free software, licensed under the GNU GPL v3 (see gpl-3.0.txt).
