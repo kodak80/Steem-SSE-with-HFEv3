@@ -21,8 +21,9 @@ What's new
 - HFE v1 images otherwise behave as before.
 
 Notes
-- This build is made automatically with Visual Studio 2022 from the VS2019
-  project, not with VS2008 like the official releases.
+- This build is made automatically from the author's VS2019 project
+  (Steem.vcxproj, Steem-D3D-Release) with the VS2019 compiler, not with
+  VS2008 like the official releases, so it needs Windows 7 or later.
 - Steem64-HFEv3.exe is the 64-bit build, Steem32-HFEv3.exe the 32-bit one.
 - Only Steem itself is included. For optional extras (plugins, DLLs for IPF
   or archive support, etc.), copy this executable into an existing Steem SSE
