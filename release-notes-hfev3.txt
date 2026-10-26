@@ -6,7 +6,19 @@ branch (r1511), adding support for HFE v3 floppy images ("HXCHFEV3", as
 written by the HxC Floppy Emulator software and used by FlashFloppy and HxC
 hardware). Source: https://github.com/kodak80/Steem-SSE-with-HFEv3
 
-What's new
+What's new in HFEv3-2
+- Rob Northen Copylock (and other density-based protections) now work. Copylock
+  reads two sectors of a track and requires the protected one to read slightly
+  slower - it's written at a lower density. Steem's HFE reader timed every byte
+  at the fixed track-average rate, so that check always failed and protected
+  games reached the title screen and then rebooted. HFE v3 tracks whose cell
+  density varies are now timed cell by cell, so a slower sector reads slower,
+  just like on a real drive. Confirmed on Xenon II, Toki, Roller Coaster
+  Rumbler and The Chaos Engine; also improves timing-sensitive in-game checks
+  (e.g. the Dungeon Master Hall of Champions gate). Ordinary disks are
+  unaffected (only tracks with varying density use the new timing).
+
+Earlier (HFEv3-1)
 - HFE v3 images can be inserted like v1 HFE images.
 - FIX for all HFE images (v1 too): images made by HxC, Gotek or GTi didn't
   boot (TOS kept retrying the boot sector, Record Not Found). Their sync
