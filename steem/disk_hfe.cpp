@@ -392,6 +392,24 @@ int TImageHFE::GetNextTransition(WORD& us_to_next_flux) {
 }
 
 
+int TImageHFE::VarByteCycles(WORD byteindex,int nominal_cpb) {
+  // Only variable-density v3 tracks override the standard byte timing. The
+  // byte's 16 cells carry a real duration in Cyc (4.4 fixed point, 256 =
+  // nominal cell); scaled against a nominal byte (16*256) it gives the real
+  // CPU-cycle length of that byte, so a slower (lower-density) sector - e.g.
+  // the Rob Northen Copylock sector 6 - reads measurably slower, as on a
+  // real drive. Nominal tracks return -1 and keep the fixed byte timing.
+  if(!IsV3 || !V3Current || !V3Current->Cyc || !V3Current->nWords)
+    return -1;
+  int w=byteindex%V3Current->nWords;
+  DWORD fp=0;
+  for(int k=0;k<16;k++)
+    fp+=V3Current->Cyc[w*16+k];
+  // nominal byte = 16 cells * 256 = 4096 -> nominal_cpb cycles
+  return (int)(((long long)nominal_cpb*fp+2048)/4096);
+}
+
+
 void TImageHFE::IncBitPosition() {
   BitPosition++;
   if(BitPosition/16>Position)

@@ -50,6 +50,7 @@ struct  TImageHFE:public TImageMfm {
   virtual void SetImageWord(WORD position,WORD mfm_data);
   // STW v2
   virtual int GetNextTransition(WORD& us_to_next_flux);
+  virtual int VarByteCycles(WORD byteindex,int nominal_cpb);
   virtual void IncBitPosition();
   // HFEv3
   // A v3 track stream may contain opcodes (index, bitrate change, skip bits,

@@ -192,6 +192,10 @@ struct TImageMfm { // base class for TImageHFE, TImageSCP, TImageSTW
   virtual void ComputePosition(WORD position);
   virtual WORD GetImageWord(WORD position)=0;
   virtual int GetNextTransition(WORD& us_to_next_flux);
+  // Real duration in CPU cycles of the MFM byte at this position, for images
+  // whose cell density varies within a track (HFEv3). Returns -1 when the
+  // track is nominal, so the caller keeps the standard fixed byte timing.
+  virtual int VarByteCycles(WORD byteindex,int nominal_cpb) { return -1; }
   virtual void SetImageWord(WORD position,WORD mfm_data)=0;
   // variables
   FILE *fCurrentImage;

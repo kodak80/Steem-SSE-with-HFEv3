@@ -424,7 +424,18 @@ void TSF314::Read() { // only called by TWD1772::Read()
     }
     else
 #endif
-    Fdc.update_time=time_of_last_ip+cycles_per_byte*(disk.current_byte+1);
+    {
+      // Variable-density HFEv3 tracks (e.g. Rob Northen Copylock) time each
+      // byte by its real cell density instead of the fixed track average, so
+      // a slower sector reads slower - the difference the protection checks.
+      // Nominal tracks return -1 and keep the standard fixed byte timing.
+      int vbt=(ImageType.Manager==MNGR_WD1772 && MfmManager)
+        ? MfmManager->VarByteCycles(disk.current_byte,cycles_per_byte) : -1;
+      if(vbt>=0)
+        Fdc.update_time=Fdc.current_time+vbt;
+      else
+        Fdc.update_time=time_of_last_ip+cycles_per_byte*(disk.current_byte+1);
+    }
     if(Fdc.update_time-A_S_T<0) // safety
       Fdc.update_time=A_S_T+cycles_per_byte;
   }
