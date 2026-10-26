@@ -116,10 +116,11 @@ struct THfeV3Gap {
 // growable bit buffer used while decoding a v3 track (one byte per bit)
 struct THfeV3Bits {
   BYTE *bit,*weak;
+  WORD *cyc; // per-cell flux time, 4.4 fixed point cycles (256 = nominal)
   int n,size;
-  THfeV3Bits():bit(NULL),weak(NULL),n(0),size(0) {}
-  ~THfeV3Bits() { free(bit); free(weak); }
-  bool Add(BYTE b,BYTE w) {
+  THfeV3Bits():bit(NULL),weak(NULL),cyc(NULL),n(0),size(0) {}
+  ~THfeV3Bits() { free(bit); free(weak); free(cyc); }
+  bool Add(BYTE b,BYTE w,WORD c) {
     if(n==size)
     {
       int new_size=size ? size*2 : 65536;
@@ -131,10 +132,15 @@ struct THfeV3Bits {
       if(!nw)
         return false;
       weak=nw;
+      WORD *nc=(WORD*)realloc(cyc,new_size*sizeof(WORD));
+      if(!nc)
+        return false;
+      cyc=nc;
       size=new_size;
     }
     bit[n]=b;
     weak[n]=w;
+    cyc[n]=c;
     n++;
     return true;
   }
@@ -365,17 +371,23 @@ WORD TImageHFE::GetMfmData(WORD position) {
 
 int TImageHFE::GetNextTransition(WORD& us_to_next_flux) {
   DWORD bit=0;
-  int cycles=0;
   us_to_next_flux=0;
+  // For a variable-density v3 track, Cyc gives the real flux time of each cell
+  // (4.4 fixed-point 8MHz cycles, 256 = nominal) so the DPLL sees the true
+  // timing. Nominal tracks (Cyc==NULL) and v1 images keep the 16cy/2us path.
+  const WORD *cyc=(IsV3 && V3Current)?V3Current->Cyc:NULL;
+  int ncells=(cyc && V3Current->nWords)?V3Current->nWords*16:0;
+  DWORD fp=0; // flux time since last transition, 4.4 fixed-point cycles
   do
   {
-    cycles+=(256/16);//TODO
-    us_to_next_flux+=2;
+    fp+=(cyc && ncells)?cyc[BitPosition%ncells]:256;
     WORD mfm=GetImageWord(Position);
     DWORD index=15-(BitPosition%16); // most significant bit read first
     bit=(mfm>>index)&1;
     IncBitPosition();
   } while(bit==0);
+  int cycles=(int)((fp+8)>>4);
+  us_to_next_flux=(WORD)((cycles+4)/8);
   return cycles;
 }
 
@@ -412,6 +424,7 @@ void TImageHFE::FreeV3Tracks() {
     {
       free(V3Tracks[i].Data);
       free(V3Tracks[i].Weak);
+      free(V3Tracks[i].Cyc);
     }
   }
   free(V3Tracks);
@@ -444,6 +457,7 @@ bool TImageHFE::DecodeV3Track(BYTE side,BYTE track,THfeV3Track &t) {
   const int max_bits=0xFFFF*16;
   THfeV3Bits bits;
   bool ok=true;
+  bool density=false; // true if any cell's flux time differs from nominal
   for(int i=0;i<side_len && ok && bits.n<max_bits;)
   {
     BYTE raw=ImageData[base+(i/256)*512+side*256+i%256];
@@ -493,11 +507,20 @@ bool TImageHFE::DecodeV3Track(BYTE side,BYTE track,THfeV3Track &t) {
         int n=(int)((acc+nominal/2)/nominal);
         if(n<1)
           n=1;
+        // Real flux time of this gap, spread over the n nominal cells, in
+        // 4.4 fixed-point 8MHz cycles (one nominal cell = 72 units = 256).
+        // The flux/DPLL reader uses this so density is honoured; the word
+        // array keeps nominal spacing for the word path and writes.
+        DWORD gap_fp=(acc*256)/nominal;
+        WORD per0=(WORD)(n>0?gap_fp/n:gap_fp);
+        WORD per1=(WORD)(gap_fp-(DWORD)(n-1)*per0); // last cell takes remainder
+        if(gap_fp!=(DWORD)n*256)
+          density=true;
         // zero cells take the weak state of the input at their centre
         for(int j=1;j<n && ok;j++)
-          ok=bits.Add(0,gap.At((DWORD)((2*j-1)*nominal/2)));
+          ok=bits.Add(0,gap.At((DWORD)((2*j-1)*nominal/2)),per0);
         if(ok)
-          ok=bits.Add(1,weak);
+          ok=bits.Add(1,weak,per1);
         acc=0;
         gap.n=0;
       }
@@ -506,8 +529,12 @@ bool TImageHFE::DecodeV3Track(BYTE side,BYTE track,THfeV3Track &t) {
   }
   // remaining cells after the last transition
   int n_end=(int)((acc+nominal/2)/nominal);
+  DWORD end_fp=n_end>0?(acc*256)/nominal:0;
+  WORD end_per=(WORD)(n_end>0?end_fp/n_end:256);
+  if(n_end>0 && end_fp!=(DWORD)n_end*256)
+    density=true;
   for(int j=1;j<=n_end && ok && bits.n<max_bits;j++)
-    ok=bits.Add(0,gap.At((DWORD)((2*j-1)*nominal/2)));
+    ok=bits.Add(0,gap.At((DWORD)((2*j-1)*nominal/2)),end_per);
   if(!ok)
   {
     TRACE_LOG("HFEv3 out of memory decoding side %d track %d\n",side,track);
@@ -522,11 +549,17 @@ bool TImageHFE::DecodeV3Track(BYTE side,BYTE track,THfeV3Track &t) {
   t.nWords=(WORD)((total+15)/16);
   t.Data=(WORD*)calloc(t.nWords,sizeof(WORD));
   t.Weak=(WORD*)calloc(t.nWords,sizeof(WORD));
+  t.Cyc=NULL;
+  // Only variable-density tracks carry a timing array (one WORD per cell);
+  // nominal tracks leave Cyc NULL and keep the fast nominal flux path.
+  if(density && !unformatted)
+    t.Cyc=(WORD*)calloc((size_t)t.nWords*16,sizeof(WORD));
   if(!t.Data || !t.Weak)
   {
     free(t.Data);
     free(t.Weak);
-    t.Data=t.Weak=NULL;
+    free(t.Cyc);
+    t.Data=t.Weak=t.Cyc=NULL;
     t.nWords=0;
     return false;
   }
@@ -535,7 +568,7 @@ bool TImageHFE::DecodeV3Track(BYTE side,BYTE track,THfeV3Track &t) {
   bool any_weak=unformatted;
   for(int i=0;i<t.nWords*16;i++)
   {
-    BYTE b,w;
+    BYTE b,w; WORD c=256;
     if(unformatted)
     {
       b=(BYTE)(rand()&1);
@@ -546,6 +579,7 @@ bool TImageHFE::DecodeV3Track(BYTE side,BYTE track,THfeV3Track &t) {
       int j=(i+rotate)%total;
       b=bits.bit[j];
       w=bits.weak[j];
+      c=bits.cyc[j];
     }
     else // pad the last word with MFM zeros ($AAAA)
     {
@@ -559,6 +593,8 @@ bool TImageHFE::DecodeV3Track(BYTE side,BYTE track,THfeV3Track &t) {
       t.Weak[i/16]|=(WORD)(1<<(15-i%16));
       any_weak=true;
     }
+    if(t.Cyc)
+      t.Cyc[i]=c ? c : 256;
   }
   if(!any_weak)
   {

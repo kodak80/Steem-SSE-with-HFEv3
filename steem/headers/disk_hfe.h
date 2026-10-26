@@ -59,6 +59,9 @@ struct  TImageHFE:public TImageMfm {
   struct THfeV3Track {
     WORD *Data;  // decoded MFM words, first bit = MSB
     WORD *Weak;  // weak bit mask (NULL if none), re-randomised on each read
+    WORD *Cyc;   // per-cell flux time, 8MHz cycles in 4.4 fixed point (256 =
+                 // nominal 16cy/2us); NULL when the track is pure nominal
+                 // density, so normal disks keep the exact nominal timing path
     WORD nWords;
     bool Dirty;  // written to by the emulated FDC
   };
