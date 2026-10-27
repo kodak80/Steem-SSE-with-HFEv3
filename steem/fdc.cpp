@@ -3491,7 +3491,20 @@ r1       r0            1772
       {
         TRACE_LOG2("Read sector %c:%d-%d-%d CRC error\n",'A'+floppyno,CURRENT_SIDE,IDField.track,IDField.num);
         str|=FDC_STR_CRC;
-        Irq(true);
+        // A data CRC error flags the status but, in READ MULTIPLE, the real
+        // WD1772 keeps going to the next sector (verified against CAPS and real
+        // hardware) rather than ending the command. Some protections - e.g. the
+        // ReadySoft loader on Dragon's Lair - rely on this: they read a run of
+        // sectors that includes a deliberate bad-CRC one and check how many
+        // bytes the DMA transferred. Ending here left the read one sector short
+        // and the loader looped forever. A single-sector read still ends.
+        if(cr&CR_M)
+        {
+          prg_phase=WD_TYPEII_CHECK_MULTIPLE;
+          OnUpdate();
+        }
+        else
+          Irq(true);
       }
       else
       {
