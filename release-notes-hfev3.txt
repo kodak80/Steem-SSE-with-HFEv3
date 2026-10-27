@@ -6,6 +6,16 @@ branch (r1511), adding support for HFE v3 floppy images ("HXCHFEV3", as
 written by the HxC Floppy Emulator software and used by FlashFloppy and HxC
 hardware). Source: https://github.com/kodak80/Steem-SSE-with-HFEv3
 
+What's new in HFEv3-3
+- ReadySoft-style loaders that read a run of sectors in one go (READ MULTIPLE)
+  over a track containing a deliberate bad-CRC sector now work. Steem used to
+  end the whole read at the bad sector; the real WD1772 flags the error and
+  keeps reading to the end of the run, which these loaders depend on. This gets
+  several protected titles much further than before. (Note: Dragon's Lair /
+  Dragon's Lair 2 now load their first tracks but still stop later on a
+  separate track-6 check - not yet solved; they work on a real Gotek.)
+  Ordinary disks are unaffected - only multi-sector reads that hit a CRC error.
+
 What's new in HFEv3-2
 - Rob Northen Copylock (and other density-based protections) now work. Copylock
   reads two sectors of a track and requires the protected one to read slightly
