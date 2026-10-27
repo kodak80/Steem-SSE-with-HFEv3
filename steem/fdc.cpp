@@ -2800,8 +2800,8 @@ void TWD1772::Irq(bool state) {
   Amd.Enabled=false;
   if(state && !Lines.irq) // so not on "force interrupt"
   {
-    DLT("  END cr=%02X st=%02X sr=%d side=%d dma=%06X cnt=%d\n",
-      (int)cr,(int)str,(int)sr,(int)CURRENT_SIDE,(unsigned)dma_address,(int)Dma.Counter);
+    DLT("  END cr=%02X st=%02X sr=%d side=%d dma=%06X cnt=%d pc=%06X\n",
+      (int)cr,(int)str,(int)sr,(int)CURRENT_SIDE,(unsigned)dma_address,(int)Dma.Counter,(unsigned)old_pc);
     IndexCounter=10;
     prg_phase=WD_MOTOR_OFF; // will be changed for $D4
     str&=~FDC_STR_BSY;
@@ -3835,9 +3835,9 @@ void TWD1772::Write() {
 void TWD1772::WriteCR(BYTE const io_src_b) {
   TSF314 &drive=FloppyDrive[DRIVE];
   BYTE NewCommandType=CommandType(io_src_b);
-  DLT("CMD %02X t%d trk=%d sr=%d side=%d st=%02X dma=%06X cnt=%d\n",
+  DLT("CMD %02X t%d trk=%d sr=%d side=%d st=%02X dma=%06X cnt=%d pc=%06X\n",
     io_src_b,NewCommandType,(int)CURRENT_TRACK,(int)sr,(int)CURRENT_SIDE,
-    (int)str,(unsigned)dma_address,(int)Dma.Counter);
+    (int)str,(unsigned)dma_address,(int)Dma.Counter,(unsigned)old_pc);
   if(NewCommandType==2 || NewCommandType==3) //or no condition?
   {
     if(drive.ImageType.Manager==MNGR_WD1772 && drive.bDiskInDrive)
