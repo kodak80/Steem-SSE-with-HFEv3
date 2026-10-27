@@ -981,10 +981,10 @@ acknowledge Force Interrupt commands only between micro- instructions.
       // keep streaming bytes into DMA after the CPU interrupted it. ReadySoft
       // loaders force-interrupt a running multi-sector read and then inspect
       // the DMA; a lingering transfer would over-run and corrupt it.
-      if(prg_phase>WD_READY && prg_phase<WD_MOTOR_OFF)
+      if(Fdc.prg_phase>TWD1772::WD_READY && Fdc.prg_phase<TWD1772::WD_MOTOR_OFF)
       {
-        Drq(false);
-        prg_phase=WD_READY;
+        Fdc.Drq(false);
+        Fdc.prg_phase=TWD1772::WD_READY;
       }
       if(Fdc.cr&b1100) 
       {
