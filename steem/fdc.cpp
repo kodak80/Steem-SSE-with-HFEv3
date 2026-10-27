@@ -975,6 +975,17 @@ acknowledge Force Interrupt commands only between micro- instructions.
         Fdc.StatusType=1;
         Fdc.str&=~(FDC_STR_CRC|FDC_STR_LD|FDC_STR_RT|FDC_STR_RNF);
       }
+      // Force Interrupt "immediately stops any command in progress". Actually
+      // halt the type-II/III transfer: drop DRQ and idle the state machine so
+      // a read (esp. a READ MULTIPLE that now continues past CRC errors) can't
+      // keep streaming bytes into DMA after the CPU interrupted it. ReadySoft
+      // loaders force-interrupt a running multi-sector read and then inspect
+      // the DMA; a lingering transfer would over-run and corrupt it.
+      if(prg_phase>WD_READY && prg_phase<WD_MOTOR_OFF)
+      {
+        Drq(false);
+        prg_phase=WD_READY;
+      }
       if(Fdc.cr&b1100) 
       {
 /*  "The lower four bits of the command determine the conditional 
