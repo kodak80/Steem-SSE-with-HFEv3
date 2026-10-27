@@ -37,6 +37,23 @@ object: Pasti (STX) and CAPS/SPS (IPF/CTR).
 #include <diskman.h>
 #include <iolist.h>
 
+// --- Dragon's Lair diagnostic trace (temporary, dragonslair branch only) ---
+// Logs every WD1772 command and completion with the DMA pointer, to dltrace.txt
+// next to the current working dir, so we can see where the custom loader's
+// read sequence diverges. Capped so it can't fill the disk.
+#define DL_TRACE 1
+#if defined(DL_TRACE)
+#include <cstdarg>
+static void DLT(const char*fmt,...){
+  static long n=0; static FILE*f=NULL;
+  if(n>400000) return;
+  if(!f){ f=fopen("dltrace.txt","w"); if(!f){ n=500000; return; } }
+  va_list ap; va_start(ap,fmt); vfprintf(f,fmt,ap); va_end(ap);
+  fflush(f); n++;
+}
+#else
+static inline void DLT(const char*,...){}
+#endif
 
 #define FLOPPY_IRQ_YES 9
 #define FLOPPY_IRQ_ONESEC 10
@@ -2783,6 +2800,8 @@ void TWD1772::Irq(bool state) {
   Amd.Enabled=false;
   if(state && !Lines.irq) // so not on "force interrupt"
   {
+    DLT("  END cr=%02X st=%02X sr=%d side=%d dma=%06X cnt=%d\n",
+      (int)cr,(int)str,(int)sr,(int)CURRENT_SIDE,(unsigned)dma_address,(int)Dma.Counter);
     IndexCounter=10;
     prg_phase=WD_MOTOR_OFF; // will be changed for $D4
     str&=~FDC_STR_BSY;
@@ -3803,6 +3822,9 @@ void TWD1772::Write() {
 void TWD1772::WriteCR(BYTE const io_src_b) {
   TSF314 &drive=FloppyDrive[DRIVE];
   BYTE NewCommandType=CommandType(io_src_b);
+  DLT("CMD %02X t%d trk=%d sr=%d side=%d st=%02X dma=%06X cnt=%d\n",
+    io_src_b,NewCommandType,(int)CURRENT_TRACK,(int)sr,(int)CURRENT_SIDE,
+    (int)str,(unsigned)dma_address,(int)Dma.Counter);
   if(NewCommandType==2 || NewCommandType==3) //or no condition?
   {
     if(drive.ImageType.Manager==MNGR_WD1772 && drive.bDiskInDrive)
