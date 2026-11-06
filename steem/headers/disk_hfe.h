@@ -80,7 +80,7 @@ struct  TImageHFE:public TImageMfm {
   // image. Each track read from the drive is stored as a decoded v3 track,
   // with the measured density in Cyc, and kept until the disk is removed.
   // The drive is read-only for now.
-  bool OpenBridge(const char *descriptor);
+  bool OpenBridge(const char *descriptor,const char *path);
   bool LoadBridgeTrack(BYTE side,BYTE track,THfeV3Track &t);
   void *Bridge; // FloppyBridgeOpen() handle, NULL for an image file
   picfileformatheader BridgeHeader; // stands in for the file header

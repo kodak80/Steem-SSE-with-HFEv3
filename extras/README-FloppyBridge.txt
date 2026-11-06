@@ -26,6 +26,15 @@ removed. FloppyBridge measures how fast each byte goes past the head, and
 Steem uses that like the density of an HFEv3 image, so timing-based
 protections such as Rob Northen Copylock see the real disk's timing.
 
+The log
+-------
+With log=on (the default) Steem writes Greaseweazle.log next to
+Greaseweazle.hfe: one line per track read, with how long it took, the speed
+range and the sectors found and checked, eg
+  track  0 side 0: 100114 bits, 412 ms, 1 rev, speed 994-1006 | 9 IDs
+  (trk 0 side 0, sectors 1 2 3 4 5 6 7 8 9), data OK 9, bad 0
+If a disk doesn't boot, the log shows whether the drive read it correctly.
+
 Limits of this first version
 ----------------------------
 - Read-only: the disk is shown as write-protected, nothing is written to it.

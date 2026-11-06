@@ -84,8 +84,8 @@ struct TMockBridge {
   Bits bits;            // one revolution, first bit first
   std::vector<WORD> speed; // per byte, 1000 = nominal
 } g_fb={true,true,81,0,0,0,0};
-static int g_fb_handle;
-void *FloppyBridgeOpen(const char*descriptor,char*error,int error_size){
+static int g_fb_handle; static std::string g_fb_log;
+void *FloppyBridgeOpen(const char*descriptor,const char*log_path,char*error,int error_size){ g_fb_log=log_path?log_path:"";
   g_fb.opens++;
   if(!g_fb.open_ok){snprintf(error,error_size,"mock: no Greaseweazle");return NULL;}
   if(strncmp(descriptor,"FLOPPYBRIDGE",12)){snprintf(error,error_size,"bad descriptor");return NULL;}
@@ -323,6 +323,7 @@ int main(){
     for(int i=2000;i<2400;i++) g_fb.speed[i]=1050; // 5% slower bytes
     CHECK(im.Open((char*)"t_gw.hfe"),"bridge open");
     CHECK(im.Bridge!=NULL && im.IsV3,"bridge mode is a v3 track store");
+    CHECK(g_fb_log=="t_gw.log","log next to the descriptor (%s)",g_fb_log.c_str());
     CHECK(im.file_header->number_of_track==82,"cylinders from the drive (%d)",im.file_header->number_of_track);
     CHECK(im.file_header->floppyinterfacemode==0x02,"DD drive (ATARIST_DD_FLOPPYMODE)");
     int r0=g_fb.reads;

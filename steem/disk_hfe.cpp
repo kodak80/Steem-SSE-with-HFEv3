@@ -743,9 +743,21 @@ bool TImageHFE::BitsToV3Track(const BYTE *mfm,const WORD *speed,int nbits,
 
 #if defined(SSE_FLOPPYBRIDGE)
 
-bool TImageHFE::OpenBridge(const char *descriptor) {
-  // the descriptor file stays open, like an image, but nothing is written
-  Bridge=FloppyBridgeOpen(descriptor,BridgeError,sizeof(BridgeError));
+bool TImageHFE::OpenBridge(const char *descriptor,const char *path) {
+  // the descriptor file stays open, like an image, but nothing is written;
+  // the log goes next to it: Greaseweazle.hfe -> Greaseweazle.log
+  char log_path[MAX_PATH+8];
+  log_path[0]=0;
+  if(path && strlen(path)<MAX_PATH)
+  {
+    strcpy(log_path,path);
+    char *dot=strrchr(log_path,'.');
+    char *slash=strrchr(log_path,'\\');
+    if(dot && (!slash || dot>slash))
+      *dot=0;
+    strcat(log_path,".log");
+  }
+  Bridge=FloppyBridgeOpen(descriptor,log_path,BridgeError,sizeof(BridgeError));
   if(!Bridge)
   {
     TRACE_LOG("FloppyBridge open failed: %s\n",BridgeError);
@@ -992,7 +1004,7 @@ bool TImageHFE::Open(char *path) {
         text+=3; // UTF-8 BOM from a text editor
       if(IMAGE_SIZE>=(int)strlen(FLOPPYBRIDGE_SIGNATURE)+(int)(text-(char*)ImageData)
         && !strncmp(text,FLOPPYBRIDGE_SIGNATURE,strlen(FLOPPYBRIDGE_SIGNATURE)))
-        ok=OpenBridge(text);
+        ok=OpenBridge(text,path);
       else
 #endif
       {

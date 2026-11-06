@@ -32,6 +32,8 @@ inserted from the disk manager like any image:
   driver=greaseweazle   ; greaseweazle (default), drawbridge, supercardpro
   port=auto             ; auto (default) or a serial port, eg COM5
   drive=A               ; A (default), B for a PC cable; 0-3 for Shugart
+  log=on                ; on (default): Greaseweazle.log next to the file
+  density=auto          ; auto (default), off or raw: see FloppyBridgeSmoothSpeeds
   ;config=...           ; or a complete FloppyBridge config string
 
 The bridge runs in "stalling" mode: when the emulated FDC needs a track that
@@ -54,9 +56,43 @@ and the drive is used as DD.
 
 #include <ctype.h>
 
+#include <stdarg.h>
+#include <chrono>
+#include <thread>
+
+typedef std::chrono::steady_clock TFbClock;
+
 struct TFloppyBridgeDrive {
   FloppyBridgeAPI *api;
+  FILE *log;
+  TFbClock::time_point t0;
+  int density; // 0 auto, 1 off, 2 raw
+  bool disk_in;
 };
+
+
+static int ElapsedMs(TFbClock::time_point since) {
+  return (int)std::chrono::duration_cast<std::chrono::milliseconds>(
+    TFbClock::now()-since).count();
+}
+
+
+static void FbSleep(int ms) {
+  std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+}
+
+
+static void Log(TFloppyBridgeDrive *drv,const char *fmt,...) {
+  if(!drv || !drv->log)
+    return;
+  fprintf(drv->log,"%7.3f  ",ElapsedMs(drv->t0)/1000.0);
+  va_list args;
+  va_start(args,fmt);
+  vfprintf(drv->log,fmt,args);
+  va_end(args);
+  fputs("\n",drv->log);
+  fflush(drv->log); // so the log is complete even if Steem is killed
+}
 
 
 static void SetError(char *error,int error_size,const char *msg) {
@@ -92,12 +128,14 @@ static bool ContainsText(const char *text,const char *word) {
 
 // descriptor settings
 struct TFloppyBridgeSettings {
-  char driver[64],port[64],drive[16];
+  char driver[64],port[64],drive[16],log[16],density[16];
   char config[1024];
   TFloppyBridgeSettings() {
     strcpy(driver,"greaseweazle");
     strcpy(port,"auto");
     strcpy(drive,"A");
+    strcpy(log,"on");
+    strcpy(density,"auto");
     config[0]=0;
   }
 };
@@ -142,6 +180,8 @@ static void ParseDescriptor(const char *text,TFloppyBridgeSettings &s) {
       else if(SameText(key,"port")) { dst=s.port; dst_size=sizeof(s.port); }
       else if(SameText(key,"drive")) { dst=s.drive; dst_size=sizeof(s.drive); }
       else if(SameText(key,"config")) { dst=s.config; dst_size=sizeof(s.config); }
+      else if(SameText(key,"log")) { dst=s.log; dst_size=sizeof(s.log); }
+      else if(SameText(key,"density")) { dst=s.density; dst_size=sizeof(s.density); }
       if(dst)
       {
         strncpy(dst,val,dst_size-1);
@@ -181,7 +221,212 @@ static int FindDriver(const char *name) {
 }
 
 
-void *FloppyBridgeOpen(const char *descriptor,char *error,int error_size) {
+
+
+/////////////////////////
+// checking a revolution
+/////////////////////////
+
+// MFM bit i of the revolution (first bit = MSB of mfm[0])
+static inline int MfmBit(const BYTE *mfm,int i) {
+  return (mfm[i>>3]>>(7-(i&7)))&1;
+}
+
+
+// data byte of the 16 cells starting at bit pos (clock, data, clock...)
+static int MfmByte(const BYTE *mfm,int nbits,int pos) {
+  if(pos<0 || pos+16>nbits)
+    return -1;
+  int b=0;
+  for(int k=1;k<16;k+=2)
+    b=(b<<1)|MfmBit(mfm,pos+k);
+  return b;
+}
+
+
+static WORD Crc16(WORD crc,BYTE b) { // CCITT, as the WD1772
+  crc^=(WORD)(b<<8);
+  for(int k=0;k<8;k++)
+    crc=(crc&0x8000) ? (WORD)((crc<<1)^0x1021) : (WORD)(crc<<1);
+  return crc;
+}
+
+
+// what the ST would find on the revolution: sector IDs and their data
+void FloppyBridgeCheckTrack(const BYTE *mfm,int nbits,TFloppyBridgeCheck &c) {
+  memset(&c,0,sizeof(c));
+  c.id_track=c.id_side=-1;
+  if(!mfm || nbits<64)
+    return;
+  WORD reg=0;
+  int syncs=0,last_sync=-100;
+  int id_size=-1,id_end=-100000,id_sector=0;
+  for(int i=0;i<nbits;i++)
+  {
+    reg=(WORD)((reg<<1)|MfmBit(mfm,i));
+    if(reg!=0x4489)
+      continue;
+    syncs=(i-last_sync==16) ? syncs+1 : 1;
+    last_sync=i;
+    if(syncs<3)
+      continue;
+    int pos=i+1; // first cell of the address mark
+    int mark=MfmByte(mfm,nbits,pos);
+    if(mark<0)
+      break;
+    WORD crc=0xFFFF;
+    crc=Crc16(crc,0xA1); crc=Crc16(crc,0xA1); crc=Crc16(crc,0xA1);
+    crc=Crc16(crc,(BYTE)mark);
+    pos+=16;
+    if(mark==0xFE) // ID field
+    {
+      int f[6];
+      for(int k=0;k<6;k++,pos+=16)
+        f[k]=MfmByte(mfm,nbits,pos);
+      if(f[5]<0)
+        break;
+      for(int k=0;k<4;k++)
+        crc=Crc16(crc,(BYTE)f[k]);
+      if(crc==(WORD)((f[4]<<8)|f[5]))
+      {
+        if(c.ids<FLOPPYBRIDGE_CHECK_MAX)
+          c.id_list[c.ids]=(BYTE)f[2];
+        c.ids++;
+        c.id_track=f[0];
+        c.id_side=f[1];
+        id_size=f[3]&3;
+        id_sector=f[2];
+        id_end=pos;
+      }
+      else
+        c.bad_ids++;
+      i=pos-1;
+      syncs=0;
+    }
+    else if(mark==0xFB || mark==0xF8) // data field
+    {
+      // only counted if it follows a good ID, as the FDC would read it
+      if(id_size>=0 && pos-id_end<16*60)
+      {
+        int len=128<<id_size;
+        bool ok=true;
+        for(int k=0;k<len+2 && ok;k++,pos+=16)
+        {
+          int b=MfmByte(mfm,nbits,pos);
+          if(b<0)
+            ok=false;
+          else if(k<len)
+            crc=Crc16(crc,(BYTE)b);
+          else if(k==len)
+            ok=(b==(crc>>8));
+          else
+            ok=(b==(crc&0xFF));
+        }
+        if(ok)
+          c.good++;
+        else
+        {
+          if(c.bad<FLOPPYBRIDGE_CHECK_MAX)
+            c.bad_list[c.bad]=(BYTE)id_sector;
+          c.bad++;
+        }
+        i=pos-1;
+      }
+      id_size=-1;
+      syncs=0;
+    }
+    else
+      syncs=0;
+  }
+}
+
+
+/*  The speed FloppyBridge gives for each byte comes from the raw flux timing
+    and jitters by several % from byte to byte, also on a normal disk. Taken
+    as is it would make every track "variable density". In auto mode it is
+    averaged over 32 bytes and taken relative to the track's average (so a
+    drive turning a bit fast or slow doesn't count); if no part of the track
+    is more than 3% off, the track is nominal. A Copylock-style slow sector
+    stands out clearly from that.
+*/
+void FloppyBridgeSmoothSpeeds(WORD *speed,int nbytes,int mode,
+  int *min_out,int *max_out) {
+  if(min_out) *min_out=1000;
+  if(max_out) *max_out=1000;
+  if(!speed || nbytes<=0)
+    return;
+  if(mode==FLOPPYBRIDGE_DENSITY_RAW)
+  {
+    int mn=3000,mx=0;
+    for(int i=0;i<nbytes;i++)
+    {
+      if(speed[i]<mn) mn=speed[i];
+      if(speed[i]>mx) mx=speed[i];
+    }
+    if(min_out) *min_out=mn;
+    if(max_out) *max_out=mx;
+    return;
+  }
+  if(mode==FLOPPYBRIDGE_DENSITY_OFF)
+  {
+    for(int i=0;i<nbytes;i++)
+      speed[i]=1000;
+    return;
+  }
+  const int W=32; // window, bytes
+  std::vector<int> sm(nbytes);
+  long long total=0;
+  for(int i=0;i<nbytes;i++)
+    total+=speed[i];
+  long long sum=0;
+  int count=0,lo=0,hi=0; // window [lo,hi)
+  for(int i=0;i<nbytes;i++)
+  {
+    int want_lo=i-W/2,want_hi=i+W/2;
+    if(want_lo<0) want_lo=0;
+    if(want_hi>nbytes) want_hi=nbytes;
+    while(hi<want_hi) { sum+=speed[hi++]; count++; }
+    while(lo<want_lo) { sum-=speed[lo++]; count--; }
+    sm[i]=(int)(sum/count);
+  }
+  int mean=(int)(total/nbytes);
+  if(mean<=0)
+    mean=1000;
+  int mn=100000,mx=0;
+  for(int i=0;i<nbytes;i++)
+  {
+    sm[i]=(int)(((long long)sm[i]*1000+mean/2)/mean);
+    if(sm[i]<mn) mn=sm[i];
+    if(sm[i]>mx) mx=sm[i];
+  }
+  if(min_out) *min_out=mn;
+  if(max_out) *max_out=mx;
+  bool nominal=(mn>=970 && mx<=1030);
+  for(int i=0;i<nbytes;i++)
+    speed[i]=(WORD)(nominal ? 1000 : sm[i]);
+}
+
+
+/////////////
+// the drive
+/////////////
+
+void *FloppyBridgeOpen(const char *descriptor,const char *log_path,
+  char *error,int error_size) {
+  TFloppyBridgeSettings s;
+  ParseDescriptor(descriptor,s);
+  TFloppyBridgeDrive *drv=new TFloppyBridgeDrive;
+  drv->api=NULL;
+  drv->log=NULL;
+  drv->t0=TFbClock::now();
+  drv->disk_in=false;
+  drv->density=SameText(s.density,"off") ? FLOPPYBRIDGE_DENSITY_OFF
+    : SameText(s.density,"raw") ? FLOPPYBRIDGE_DENSITY_RAW
+    : FLOPPYBRIDGE_DENSITY_AUTO;
+  if(log_path && log_path[0] && !SameText(s.log,"off") && !SameText(s.log,"0"))
+    drv->log=fopen(log_path,"w");
+  Log(drv,"Steem FloppyBridge log - driver=%s port=%s drive=%s density=%s%s%s",
+    s.driver,s.port,s.drive,s.density,s.config[0]?" config=":"",s.config);
   if(!FloppyBridgeAPI::isAvailable())
   {
 #ifdef _WIN64
@@ -189,10 +434,10 @@ void *FloppyBridgeOpen(const char *descriptor,char *error,int error_size) {
 #else
     SetError(error,error_size,"FloppyBridge.dll not found: get it from amiga.robsmithdev.co.uk/winuae and put it next to Steem");
 #endif
+    Log(drv,"%s",error);
+    FloppyBridgeClose(drv);
     return NULL;
   }
-  TFloppyBridgeSettings s;
-  ParseDescriptor(descriptor,s);
   FloppyBridgeAPI *api=NULL;
   if(s.config[0])
     api=FloppyBridgeAPI::createDriverFromString(s.config);
@@ -202,6 +447,8 @@ void *FloppyBridgeOpen(const char *descriptor,char *error,int error_size) {
     if(index<0)
     {
       SetError(error,error_size,"FloppyBridge has no driver of that name (driver=)");
+      Log(drv,"%s",error);
+      FloppyBridgeClose(drv);
       return NULL;
     }
     api=FloppyBridgeAPI::createDriver((unsigned int)index);
@@ -226,6 +473,8 @@ void *FloppyBridgeOpen(const char *descriptor,char *error,int error_size) {
   if(!api)
   {
     SetError(error,error_size,"FloppyBridge couldn't create the driver");
+    Log(drv,"%s",error);
+    FloppyBridgeClose(drv);
     return NULL;
   }
   // whatever the config says, these are needed for an accurate ST drive
@@ -236,17 +485,23 @@ void *FloppyBridgeOpen(const char *descriptor,char *error,int error_size) {
   if(!api->initialise())
   {
     SetError(error,error_size,api->getLastErrorMessage());
+    Log(drv,"initialise failed: %s",error);
     delete api;
+    FloppyBridgeClose(drv);
     return NULL;
   }
+  drv->api=api;
+  Log(drv,"connected, %d cylinders",(int)api->getMaxCylinder());
   api->resetDrive(0);
   api->setMotorStatus(false,true);
-  // FloppyBridge detects the disk in the background once the motor runs;
-  // give it a moment so the first read (the boot sector) finds it
-  for(int ms=0;ms<3000 && !api->isDiskInDrive();ms+=50)
-    Sleep(50);
-  TFloppyBridgeDrive *drv=new TFloppyBridgeDrive;
-  drv->api=api;
+  // the motor spins up and FloppyBridge detects the disk in the background;
+  // wait for that so the first read (the boot sector) finds the drive ready
+  int ms=0;
+  for(;ms<4000 && !(api->isMotorRunning() && api->isDiskInDrive());ms+=20)
+    FbSleep(20);
+  drv->disk_in=api->isDiskInDrive();
+  Log(drv,"motor %s, disk %s after %d ms",api->isMotorRunning()?"on":"off",
+    drv->disk_in?"in":"NOT detected",ms);
   return drv;
 }
 
@@ -260,7 +515,10 @@ void FloppyBridgeClose(void *handle) {
     drv->api->setMotorStatus(false,false);
     drv->api->shutdown();
     delete drv->api;
+    Log(drv,"drive closed");
   }
+  if(drv->log)
+    fclose(drv->log);
   delete drv;
 }
 
@@ -273,7 +531,36 @@ int FloppyBridgeMaxCylinder(void *handle) {
 
 bool FloppyBridgeDiskInDrive(void *handle) {
   TFloppyBridgeDrive *drv=(TFloppyBridgeDrive*)handle;
-  return drv && drv->api && drv->api->isDiskInDrive();
+  if(!drv || !drv->api)
+    return false;
+  bool in=drv->api->isDiskInDrive();
+  if(in!=drv->disk_in)
+  {
+    Log(drv,"disk %s",in?"inserted":"removed (or not detected)");
+    drv->disk_in=in;
+  }
+  return in;
+}
+
+
+static void FormatCheck(const TFloppyBridgeCheck &c,char *out,size_t size) {
+  int n=snprintf(out,size,"%d IDs",c.ids);
+  if(c.ids && (size_t)n<size)
+  {
+    n+=snprintf(out+n,size-n," (trk %d side %d, sectors",c.id_track,c.id_side);
+    for(int k=0;k<c.ids && k<FLOPPYBRIDGE_CHECK_MAX && (size_t)n<size;k++)
+      n+=snprintf(out+n,size-n," %d",c.id_list[k]);
+    if((size_t)n<size)
+      n+=snprintf(out+n,size-n,")");
+  }
+  if((size_t)n<size)
+    n+=snprintf(out+n,size-n,", data OK %d, bad %d",c.good,c.bad);
+  for(int k=0;k<c.bad && k<FLOPPYBRIDGE_CHECK_MAX && (size_t)n<size;k++)
+    n+=snprintf(out+n,size-n,"%s%d",k?",":" (",c.bad_list[k]);
+  if(c.bad && (size_t)n<size)
+    n+=snprintf(out+n,size-n,")");
+  if(c.bad_ids && (size_t)n<size)
+    snprintf(out+n,size-n,", %d bad ID CRC",c.bad_ids);
 }
 
 
@@ -284,28 +571,80 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
     return 0;
   FloppyBridgeAPI *api=drv->api;
   bool upper=(side!=0); // ST side 1 = upper head (head 1)
+  TFbClock::time_point start=TFbClock::now();
   api->setMotorStatus(upper,true);
   api->gotoCylinder(track,upper);
-  // in stalling mode each call waits up to ~450ms for the revolution; the
-  // first track also has to wait for the motor and the seek
-  int bits=0;
-  for(int attempt=0;attempt<10 && !bits;attempt++)
-    bits=api->getMFMTrack(upper,(unsigned int)track,false,max_bytes,mfm);
-  if(bits<=0)
-    return 0;
-  if(bits>max_bytes*8)
-    bits=max_bytes*8;
-  // getMFMSpeed reads the revolution just returned (same track and side):
-  // one speed per byte
-  int nbytes=(bits+7)/8;
-  for(int i=0;i<nbytes;i++)
+/*  In stalling mode getMFMTrack waits up to 450ms for the revolution, but
+    returns 0 at once while the motor spins up or the disk isn't detected.
+    So we wait on the clock, up to 5s (motor, seek, a few revolutions).
+    If the revolution has bad sectors, up to 2 more are read and the best
+    one is kept: a real FDC would retry too.
+*/
+  std::vector<BYTE> tmp(max_bytes);
+  int best_bits=0,best_score=-1,revs=0;
+  TFloppyBridgeCheck best_check;
+  memset(&best_check,0,sizeof(best_check));
+  while(revs<3 && ElapsedMs(start)<5000)
   {
-    int sp=api->getMFMSpeed(i*8);
-    if(sp<700 || sp>3000) // turbo (100), not ready or garbage: nominal
-      sp=FLOPPYBRIDGE_SPEED_NOMINAL;
-    speed[i]=(unsigned short)sp;
+    if(revs)
+    {
+      // next revolution: FloppyBridge keeps reading the track in the
+      // background; after one revolution (200ms) the next buffer is ready
+      // (isMFMDataAvailable() is always true in stalling mode, no use here)
+      FbSleep(220);
+      api->mfmSwitchBuffer(upper);
+    }
+    int bits=api->getMFMTrack(upper,(unsigned int)track,false,max_bytes,
+      &tmp[0]);
+    if(bits<=0)
+    {
+      FbSleep(10);
+      continue;
+    }
+    if(bits>max_bytes*8)
+      bits=max_bytes*8;
+    revs++;
+    TFloppyBridgeCheck c;
+    FloppyBridgeCheckTrack(&tmp[0],bits,c);
+    int score=c.good*4+c.ids-c.bad*2;
+    if(score>best_score)
+    {
+      best_score=score;
+      best_bits=bits;
+      best_check=c;
+      memcpy(mfm,&tmp[0],(bits+7)/8);
+      // getMFMSpeed reads the revolution just returned: one speed per byte
+      int nbytes=(bits+7)/8;
+      for(int i=0;i<nbytes;i++)
+      {
+        int sp=api->getMFMSpeed(i*8);
+        if(sp<700 || sp>3000) // turbo (100), not ready or garbage: nominal
+          sp=FLOPPYBRIDGE_SPEED_NOMINAL;
+        speed[i]=(unsigned short)sp;
+      }
+    }
+    // a good track (or a blank or unusual one: retrying won't help)
+    if(c.bad==0 && c.bad_ids==0)
+      break;
   }
-  return bits;
+  if(!best_bits)
+  {
+    Log(drv,"track %2d side %d: NO DATA after %d ms (motor %s, ready %s, disk %s)",
+      track,side,ElapsedMs(start),api->isMotorRunning()?"on":"off",
+      api->isReady()?"yes":"no",api->isDiskInDrive()?"in":"not detected");
+    return 0;
+  }
+  int mn,mx;
+  FloppyBridgeSmoothSpeeds(speed,(best_bits+7)/8,drv->density,&mn,&mx);
+  char info[300];
+  FormatCheck(best_check,info,sizeof(info));
+  bool density=false;
+  for(int i=0;i<(best_bits+7)/8 && !density;i++)
+    density=(speed[i]!=1000);
+  Log(drv,"track %2d side %d: %d bits, %d ms, %d rev, speed %d-%d%s | %s",
+    track,side,best_bits,ElapsedMs(start),revs,mn,mx,
+    density?" VARIABLE":"",info);
+  return best_bits;
 }
 
 #endif//#if defined(SSE_FLOPPYBRIDGE)
