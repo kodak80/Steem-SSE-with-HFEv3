@@ -6,6 +6,7 @@
 #include <string>
 typedef unsigned char BYTE; typedef unsigned short WORD; typedef uint32_t DWORD;
 #define SSE_DISK_HFE
+#define SSE_FLOPPYBRIDGE // bridge mode, against the mock drive in test_hfe.cpp
 #define SECTOR_SIZE 512
 #define DISK_BYTES_PER_TRACK 6256
 #define DISK_HFE_BOOT_FILENAME "HFE_boot.bin"

@@ -1,0 +1,10 @@
+FLOPPYBRIDGE
+; A real floppy drive for Steem, through FloppyBridge.
+; Insert this file in drive A: or B: like a disk image.
+; Needs FloppyBridge_x64.dll (64-bit Steem) or FloppyBridge.dll (32-bit)
+; next to Steem: https://amiga.robsmithdev.co.uk/winuae
+; Close DiskFlashback, or release the drive from it, before inserting.
+
+driver=greaseweazle   ; greaseweazle, drawbridge or supercardpro
+port=auto             ; auto, or the serial port, eg COM5
+drive=A               ; A or B (PC cable, try B if nothing is read), 0-3 Shugart

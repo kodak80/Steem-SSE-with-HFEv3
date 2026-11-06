@@ -54,6 +54,9 @@ to the original. A .sav.hfe inserted directly is updated in place.
 
 #include <debug.h>
 #include <computer.h>
+#if defined(SSE_FLOPPYBRIDGE)
+#include <floppybridge_drive.h>
+#endif
 
 
 #define IMAGE_SIZE image_size //member variable
@@ -72,6 +75,9 @@ to the original. A .sav.hfe inserted directly is updated in place.
 #define HFEV3_SKIPBITS    0xCF
 #define HFEV3_RAND        0x2F
 #define HFEV3_DEFAULT_CELL 72 // 1/36 us units -> 2us, 250kbps DD
+#ifndef ATARIST_DD_FLOPPYMODE
+#define ATARIST_DD_FLOPPYMODE 0x02
+#endif
 
 static BYTE ReverseByte(BYTE b) {
   BYTE r=0;
@@ -173,6 +179,9 @@ static bool MakeSavePath(const char *path,char *save_path,size_t size) {
 
 
 TImageHFE::TImageHFE() {
+#if defined(SSE_FLOPPYBRIDGE)
+  BridgeError[0]=0;
+#endif
   Init();
 }
 
@@ -183,17 +192,27 @@ TImageHFE::~TImageHFE() {
 
 
 void TImageHFE::Close() {
+  bool bridge=false; // a real drive: nothing to save
+#if defined(SSE_FLOPPYBRIDGE)
+  if(Bridge)
+  {
+    TRACE_LOG("FloppyBridge drive close\n");
+    FloppyBridgeClose(Bridge);
+    Bridge=NULL;
+    bridge=true;
+  }
+#endif
   if(fCurrentImage)
   {
     TRACE_LOG("HFE %s image\n",FloppyDisk[Id].WrittenTo?"save and close":"close");
-    if(IsV3 && V3Tracks && ImageData && FloppyDisk[Id].WrittenTo)
+    if(IsV3 && V3Tracks && ImageData && FloppyDisk[Id].WrittenTo && !bridge)
     {
       // re-encode written tracks into the v3 stream before saving
       for(int tr=0;tr<NUM_TRACKS;tr++)
         if(V3Tracks[tr*2].Dirty || V3Tracks[tr*2+1].Dirty)
           EncodeV3Track((BYTE)tr);
     }
-    if(ImageData && FloppyDisk[Id].WrittenTo)
+    if(ImageData && FloppyDisk[Id].WrittenTo && !bridge)
     {
       if(SavePath[0]) // first write: the original stays untouched
       {
@@ -432,6 +451,21 @@ void TImageHFE::Init() {
   IsV3=false;
   SavePath[0]=0;
   IMAGE_SIZE=0;
+#if defined(SSE_FLOPPYBRIDGE)
+  Bridge=NULL;
+  BridgeDiskIn=false;
+  // BridgeError is kept: the disk manager reports it after a failed Open
+#endif
+}
+
+
+void TImageHFE::FreeV3TrackData(THfeV3Track &t) {
+  free(t.Data);
+  free(t.Weak);
+  free(t.Cyc);
+  t.Data=t.Weak=t.Cyc=NULL;
+  t.nWords=0;
+  t.Dirty=t.Unread=false;
 }
 
 
@@ -439,11 +473,7 @@ void TImageHFE::FreeV3Tracks() {
   if(V3Tracks && file_header)
   {
     for(int i=0;i<NUM_TRACKS*2;i++)
-    {
-      free(V3Tracks[i].Data);
-      free(V3Tracks[i].Weak);
-      free(V3Tracks[i].Cyc);
-    }
+      FreeV3TrackData(V3Tracks[i]);
   }
   free(V3Tracks);
   V3Tracks=NULL;
@@ -626,6 +656,163 @@ bool TImageHFE::DecodeV3Track(BYTE side,BYTE track,THfeV3Track &t) {
 }
 
 
+bool TImageHFE::MakeUnformattedTrack(THfeV3Track &t) {
+  // a track of weak (random) bits, what an unformatted track reads as
+  t.nWords=DISK_BYTES_PER_TRACK;
+  t.Data=(WORD*)malloc(t.nWords*sizeof(WORD));
+  t.Weak=(WORD*)malloc(t.nWords*sizeof(WORD));
+  t.Cyc=NULL;
+  t.Dirty=false;
+  if(!t.Data || !t.Weak)
+  {
+    free(t.Data);
+    free(t.Weak);
+    t.Data=t.Weak=NULL;
+    t.nWords=0;
+    return false;
+  }
+  for(int i=0;i<t.nWords;i++)
+  {
+    t.Data[i]=RandomWord();
+    t.Weak[i]=0xFFFF;
+  }
+  return true;
+}
+
+
+bool TImageHFE::BitsToV3Track(const BYTE *mfm,const WORD *speed,int nbits,
+  THfeV3Track &t) {
+/*  Store one revolution read from a real drive (bridge mode) as a decoded v3
+    track. The bits are already cells (FloppyBridge's PLL did that) and start
+    at the index, like a decoded v3 track. speed[] is the measured time of
+    each byte, 1000 = nominal; it becomes the per-cell flux time in Cyc
+    (256 = nominal) so the density-aware reader and the byte pacing see the
+    disk's real timing, as for a v3 image with BITRATE opcodes. When every
+    byte reads at exactly nominal speed Cyc stays NULL (nominal path).
+*/
+  t.Data=t.Weak=t.Cyc=NULL;
+  t.nWords=0;
+  t.Dirty=t.Unread=false;
+  if(!mfm || nbits<16)
+    return false;
+  if(nbits>0xFFFF*16)
+    nbits=0xFFFF*16;
+  int nbytes=(nbits+7)/8;
+  bool density=false;
+  if(speed)
+    for(int i=0;i<nbytes && !density;i++)
+      if(speed[i]!=1000)
+        density=true;
+  t.nWords=(WORD)((nbits+15)/16);
+  t.Data=(WORD*)calloc(t.nWords,sizeof(WORD));
+  if(density)
+    t.Cyc=(WORD*)malloc((size_t)t.nWords*16*sizeof(WORD));
+  if(!t.Data || (density && !t.Cyc))
+  {
+    free(t.Data);
+    free(t.Cyc);
+    t.Data=t.Cyc=NULL;
+    t.nWords=0;
+    return false;
+  }
+  for(int i=0;i<t.nWords*16;i++)
+  {
+    BYTE b;
+    WORD c=256;
+    if(i<nbits)
+    {
+      b=(BYTE)((mfm[i/8]>>(7-i%8))&1);
+      if(density)
+      {
+        DWORD sp=speed[i/8];
+        c=(WORD)((sp*256+500)/1000);
+        if(!c)
+          c=256;
+      }
+    }
+    else // pad the last word with MFM zeros ($AAAA)
+      b=(BYTE)((0xAAAA>>(15-i%16))&1);
+    if(b)
+      t.Data[i/16]|=(WORD)(1<<(15-i%16));
+    if(t.Cyc)
+      t.Cyc[i]=c;
+  }
+  return true;
+}
+
+
+#if defined(SSE_FLOPPYBRIDGE)
+
+bool TImageHFE::OpenBridge(const char *descriptor) {
+  // the descriptor file stays open, like an image, but nothing is written
+  Bridge=FloppyBridgeOpen(descriptor,BridgeError,sizeof(BridgeError));
+  if(!Bridge)
+  {
+    TRACE_LOG("FloppyBridge open failed: %s\n",BridgeError);
+    return false;
+  }
+  int cylinders=FloppyBridgeMaxCylinder(Bridge)+1; // highest one, or count+1
+  if(cylinders<80)
+    cylinders=80;
+  if(cylinders>84)
+    cylinders=84;
+  memset(&BridgeHeader,0,sizeof(BridgeHeader));
+  memcpy(BridgeHeader.HEADERSIGNATURE,"HXCHFEV3",8);
+  BridgeHeader.number_of_track=(BYTE)cylinders;
+  BridgeHeader.number_of_side=2;
+  BridgeHeader.bitRate=250;
+  BridgeHeader.floppyRPM=300;
+  BridgeHeader.floppyinterfacemode=ATARIST_DD_FLOPPYMODE;
+  BridgeHeader.write_protected=1;
+  file_header=&BridgeHeader;
+  track_header=NULL;
+  IsV3=true;
+  SavePath[0]=0;
+  V3Tracks=(THfeV3Track*)calloc(NUM_TRACKS*2,sizeof(THfeV3Track));
+  BridgeDiskIn=FloppyBridgeDiskInDrive(Bridge);
+  TRACE_LOG("FloppyBridge drive open, %d cylinders, disk %s\n",cylinders,
+    BridgeDiskIn?"in":"out");
+  return V3Tracks!=NULL;
+}
+
+
+bool TImageHFE::LoadBridgeTrack(BYTE side,BYTE track,THfeV3Track &t) {
+  bool disk_in=FloppyBridgeDiskInDrive(Bridge);
+  if(disk_in!=BridgeDiskIn)
+  {
+    // disk taken out or put in: what was read belongs to another disk
+    TRACE_LOG("FloppyBridge disk %s\n",disk_in?"inserted":"removed");
+    for(int i=0;i<NUM_TRACKS*2;i++)
+      FreeV3TrackData(V3Tracks[i]);
+    BridgeDiskIn=disk_in;
+  }
+  if(t.Data && !t.Unread)
+    return true; // already read from this disk
+  FreeV3TrackData(t);
+  if(disk_in)
+  {
+    const int max_bytes=0xFFFF*2; // as much as a track can hold
+    BYTE *mfm=(BYTE*)malloc(max_bytes);
+    WORD *speed=(WORD*)malloc(max_bytes*sizeof(WORD));
+    int nbits=(mfm && speed)
+      ? FloppyBridgeReadTrack(Bridge,side,track,mfm,speed,max_bytes) : 0;
+    bool ok=(nbits>=16 && BitsToV3Track(mfm,speed,nbits,t));
+    free(mfm);
+    free(speed);
+    TRACE_LOG("FloppyBridge read side %d track %d: %d bits%s\n",side,track,
+      nbits,(ok && t.Cyc)?", variable density":"");
+    if(ok)
+      return true;
+  }
+  // no disk, or nothing could be read: random bits, try again next time
+  bool ok=MakeUnformattedTrack(t);
+  t.Unread=true;
+  return ok;
+}
+
+#endif//#if defined(SSE_FLOPPYBRIDGE)
+
+
 bool TImageHFE::EncodeV3Track(BYTE track) {
 /*  Write decoded sides back into the v3 stream of a track. A written side is
     stored as plain data (an INDEX opcode first, weak bytes as RAND opcodes),
@@ -700,7 +887,12 @@ bool TImageHFE::LoadTrack(BYTE side,BYTE track,bool) {
       && V3Tracks)
     {
       THfeV3Track &t=V3Tracks[track*2+side];
+#if defined(SSE_FLOPPYBRIDGE)
+      if(Bridge ? LoadBridgeTrack(side,track,t)
+        : (t.Data || DecodeV3Track(side,track,t)))
+#else
       if(t.Data || DecodeV3Track(side,track,t))
+#endif
       {
         V3Current=&t;
         TRACKBYTES=t.nWords;
@@ -787,12 +979,23 @@ bool TImageHFE::Open(char *path) {
   {
     IMAGE_SIZE=(int)GetFileLength(fCurrentImage);
     //ASSERT(IMAGE_SIZE>0);
-    ImageData=(BYTE*)malloc(IMAGE_SIZE);
+    ImageData=(BYTE*)malloc(IMAGE_SIZE+1);
     //ASSERT(ImageData);
     if(ImageData)
     {
       FREAD(ImageData,1,IMAGE_SIZE,fCurrentImage); // read all in memory (2MB OK)
-
+      ImageData[IMAGE_SIZE]=0; // so a bridge descriptor is a C string
+#if defined(SSE_FLOPPYBRIDGE)
+      BridgeError[0]=0;
+      char *text=(char*)ImageData;
+      if(IMAGE_SIZE>=3 && !memcmp(text,"\xEF\xBB\xBF",3))
+        text+=3; // UTF-8 BOM from a text editor
+      if(IMAGE_SIZE>=(int)strlen(FLOPPYBRIDGE_SIGNATURE)+(int)(text-(char*)ImageData)
+        && !strncmp(text,FLOPPYBRIDGE_SIGNATURE,strlen(FLOPPYBRIDGE_SIGNATURE)))
+        ok=OpenBridge(text);
+      else
+#endif
+      {
       file_header=(picfileformatheader*)ImageData;
       if(IMAGE_SIZE>=(int)sizeof(picfileformatheader))
         IsV3=!strncmp("HXCHFEV3",(char*)file_header->HEADERSIGNATURE,8);
@@ -817,6 +1020,7 @@ TRACE_LOG("RPM %d  WP %d WA %X offset %d step %X TR0/1 %X%X TR1/1 %X%X\n",
         track_header=(pictrack*)(ImageData+file_header->track_list_offset*SECTOR_SIZE);
         ok=(!IsV3 || V3Tracks!=NULL);
       }
+      }
     }
   }//if(fCurrentImage)
   if(!ok)
@@ -836,6 +1040,10 @@ TRACE_LOG("RPM %d  WP %d WA %X offset %d step %X TR0/1 %X%X TR1/1 %X%X\n",
 
 
 void TImageHFE::SetImageWord(WORD position,WORD mfm_data) {
+#if defined(SSE_FLOPPYBRIDGE)
+  if(Bridge)
+    return; // read-only: the disk is write-protected anyway
+#endif
   if(IsV3)
   {
     if(V3Current && V3Current->Data && V3Current->nWords)

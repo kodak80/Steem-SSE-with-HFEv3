@@ -18,9 +18,9 @@ HXCFE ?= hxcfe
 all: $(B)/test_hfe
 	cd $(B) && ./test_hfe
 
-$(B)/disk_hfe.cpp: ../../steem/disk_hfe.cpp ../../steem/headers/disk_hfe.h $(wildcard mock/*.h)
+$(B)/disk_hfe.cpp: ../../steem/disk_hfe.cpp ../../steem/headers/disk_hfe.h ../../steem/headers/floppybridge_drive.h $(wildcard mock/*.h)
 	mkdir -p $(B)/hfe
-	cp ../../steem/disk_hfe.cpp ../../steem/headers/disk_hfe.h mock/*.h $(B)/
+	cp ../../steem/disk_hfe.cpp ../../steem/headers/disk_hfe.h ../../steem/headers/floppybridge_drive.h mock/*.h $(B)/
 	cp mock/hfe/libhxcfe.h ../../3rdparty/hfe/hfe_format.h $(B)/hfe/
 
 $(B)/test_hfe: test_hfe.cpp $(B)/disk_hfe.cpp

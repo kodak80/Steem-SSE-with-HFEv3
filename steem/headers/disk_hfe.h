@@ -65,10 +65,28 @@ struct  TImageHFE:public TImageMfm {
                  // density, so normal disks keep the exact nominal timing path
     WORD nWords;
     bool Dirty;  // written to by the emulated FDC
+    bool Unread; // bridge mode: no data from the drive, random bits for now
   };
   bool DecodeV3Track(BYTE side,BYTE track,THfeV3Track &t);
   bool EncodeV3Track(BYTE track);
   void FreeV3Tracks();
+  void FreeV3TrackData(THfeV3Track &t);
+  static bool MakeUnformattedTrack(THfeV3Track &t);
+  static bool BitsToV3Track(const BYTE *mfm,const WORD *speed,int nbits,
+    THfeV3Track &t);
+#if defined(SSE_FLOPPYBRIDGE)
+  // Bridge mode: a descriptor file (text starting with "FLOPPYBRIDGE") opens
+  // a real drive on a Greaseweazle etc. through FloppyBridge instead of an
+  // image. Each track read from the drive is stored as a decoded v3 track,
+  // with the measured density in Cyc, and kept until the disk is removed.
+  // The drive is read-only for now.
+  bool OpenBridge(const char *descriptor);
+  bool LoadBridgeTrack(BYTE side,BYTE track,THfeV3Track &t);
+  void *Bridge; // FloppyBridgeOpen() handle, NULL for an image file
+  picfileformatheader BridgeHeader; // stands in for the file header
+  bool BridgeDiskIn;
+  char BridgeError[256];
+#endif
   // variables
   WORD *TrackData;
   BYTE *ImageData;

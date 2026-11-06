@@ -6741,7 +6741,19 @@ int TSF314::SetDisk(EasyStr FilePath,EasyStr CompressedDiskName,
   else if(HFE)
   {
     if(Id>DRIVE_B||!ImageHFE[Id].Open(FilePath)) //?
+    {
+#if defined(SSE_FLOPPYBRIDGE)
+      // a FloppyBridge descriptor that couldn't open the real drive
+      if(Id<=DRIVE_B && ImageHFE[Id].BridgeError[0])
+        Alert(ImageHFE[Id].BridgeError,T("Greaseweazle / FloppyBridge"),
+          MB_ICONEXCLAMATION);
+#endif
       return FIMAGE_WRONGFORMAT;
+    }
+#if defined(SSE_FLOPPYBRIDGE)
+    if(ImageHFE[Id].Bridge)
+      disk.ReadOnly=true; // real drive: read-only for now (WP follows RO)
+#endif
     FloppyDisk[Id].TrackBytes=DISK_BYTES_PER_TRACK; //default
     // check if HD disk
     if(ImageHFE[Id].file_header->floppyinterfacemode==ATARIST_HD_FLOPPYMODE)

@@ -77,6 +77,32 @@ static Bytes ReadFile(const char*path){Bytes b;FILE*f=fopen(path,"rb");if(!f)ret
 static bool Exists(const char*path){FILE*f=fopen(path,"rb");if(f)fclose(f);return f!=NULL;}
 static int Diff(const Words&a,const Words&b){if(a.size()!=b.size())return -2;for(size_t i=0;i<a.size();i++)if(a[i]!=b[i])return (int)i;return -1;}
 
+// mock FloppyBridge drive (bridge mode)
+struct TMockBridge {
+  bool open_ok,disk_in;
+  int max_cyl,reads,fail_reads,opens,closes;
+  Bits bits;            // one revolution, first bit first
+  std::vector<WORD> speed; // per byte, 1000 = nominal
+} g_fb={true,true,81,0,0,0,0};
+static int g_fb_handle;
+void *FloppyBridgeOpen(const char*descriptor,char*error,int error_size){
+  g_fb.opens++;
+  if(!g_fb.open_ok){snprintf(error,error_size,"mock: no Greaseweazle");return NULL;}
+  if(strncmp(descriptor,"FLOPPYBRIDGE",12)){snprintf(error,error_size,"bad descriptor");return NULL;}
+  return &g_fb_handle;}
+void FloppyBridgeClose(void*h){if(h==&g_fb_handle)g_fb.closes++;}
+int FloppyBridgeMaxCylinder(void*){return g_fb.max_cyl;}
+bool FloppyBridgeDiskInDrive(void*){return g_fb.disk_in;}
+int FloppyBridgeReadTrack(void*,int side,int track,unsigned char*mfm,unsigned short*speed,int max_bytes){
+  g_fb.reads++;
+  if(g_fb.fail_reads>0){g_fb.fail_reads--;return 0;}
+  int n=(int)g_fb.bits.size(); if(n>max_bytes*8) n=max_bytes*8;
+  memset(mfm,0,(n+7)/8);
+  for(int i=0;i<n;i++) if(g_fb.bits[i]) mfm[i/8]|=(unsigned char)(0x80>>(i%8));
+  for(int i=0;i<(n+7)/8;i++) speed[i]=i<(int)g_fb.speed.size()?g_fb.speed[i]:1000;
+  (void)side;(void)track;
+  return n;}
+
 int main(){
   const int NB=6250; // data bytes per side -> 6250 MFM words
   Words X=RandomMfmTrack(NB,1),Y=RandomMfmTrack(NB,2);
@@ -285,6 +311,67 @@ int main(){
     im.Close();
     FILE*fp=fopen("t_v3h.hfe","wb");fwrite("HXCHFEV3",1,8,fp);fclose(fp);
     CHECK(!im.Open((char*)"t_v3h.hfe"),"truncated header rejected");
+  }
+
+  // I. bridge mode: a real drive through FloppyBridge (mocked)
+  {
+    const char*desc="\xEF\xBB\xBF" "FLOPPYBRIDGE\r\n; comment\r\ndriver=greaseweazle\nport=auto\ndrive=A\n";
+    FILE*fp=fopen("t_gw.hfe","wb");fputs(desc,fp);fclose(fp);
+    // a revolution that isn't a whole number of words, with a slow area
+    Bits b=WordsToBits(X); b.resize(b.size()-5);
+    g_fb.bits=b; g_fb.speed.assign((b.size()+7)/8,1000);
+    for(int i=2000;i<2400;i++) g_fb.speed[i]=1050; // 5% slower bytes
+    CHECK(im.Open((char*)"t_gw.hfe"),"bridge open");
+    CHECK(im.Bridge!=NULL && im.IsV3,"bridge mode is a v3 track store");
+    CHECK(im.file_header->number_of_track==82,"cylinders from the drive (%d)",im.file_header->number_of_track);
+    CHECK(im.file_header->floppyinterfacemode==0x02,"DD drive (ATARIST_DD_FLOPPYMODE)");
+    int r0=g_fb.reads;
+    bool ok;Words a=ReadTrack(im,1,3,&ok);
+    CHECK(ok && g_fb.reads==r0+1,"track read from the drive");
+    CHECK(a.size()==X.size(),"word count %d",(int)a.size());
+    int bad=0;for(size_t i=0;i+1<a.size();i++)if(a[i]!=X[i])bad++;
+    CHECK(bad==0,"bits match the drive (%d bad words)",bad);
+    // last word: 11 real bits then $AAAA padding
+    CHECK((a.back()&0xFFE0)==(X.back()&0xFFE0) && (a.back()&0x1F)==(0xAAAA&0x1F),"last word padded %04X",a.back());
+    TImageHFE::THfeV3Track&t=im.V3Tracks[3*2+1];
+    CHECK(t.Cyc!=NULL,"measured density kept");
+    CHECK(t.Cyc && t.Cyc[2000*8]==269 && t.Cyc[100*8]==256,"cell times %d %d",t.Cyc?t.Cyc[16000]:0,t.Cyc?t.Cyc[800]:0);
+    int nominal=im.VarByteCycles(10,256),slow=im.VarByteCycles(1100,256);
+    CHECK(nominal==256 && slow==269,"byte pacing follows density (%d %d)",nominal,slow);
+    a=ReadTrack(im,1,3,&ok);
+    CHECK(g_fb.reads==r0+1,"cached: not read again");
+    // a track at exactly nominal speed keeps the nominal path
+    g_fb.speed.assign(g_fb.speed.size(),1000);
+    ReadTrack(im,0,3,&ok);
+    CHECK(ok && im.V3Tracks[3*2].Cyc==NULL,"nominal track has no Cyc");
+    // writes are ignored, nothing saved
+    im.SetImageWord(5,0x1234);
+    CHECK(im.V3Tracks[3*2].Data[5]==X[5] && !im.V3Tracks[3*2].Dirty,"write ignored");
+    // disk removed: random bits, the cache is dropped
+    g_fb.disk_in=false; r0=g_fb.reads;
+    a=ReadTrack(im,0,4,&ok);
+    CHECK(ok && g_fb.reads==r0 && a.size()==6256 && im.V3Tracks[4*2].Unread,"no disk -> unformatted, not read");
+    CHECK(im.V3Tracks[3*2+1].Data==NULL,"cache dropped when the disk goes");
+    // disk back: read again
+    g_fb.disk_in=true;
+    a=ReadTrack(im,0,4,&ok);
+    CHECK(ok && g_fb.reads==r0+1 && !im.V3Tracks[4*2].Unread && a.size()==X.size(),"disk back -> read");
+    // read failure: random for now, retried next time
+    g_fb.fail_reads=1; r0=g_fb.reads;
+    a=ReadTrack(im,0,5,&ok);
+    CHECK(ok && im.V3Tracks[5*2].Unread,"failed read -> unformatted");
+    a=ReadTrack(im,0,5,&ok);
+    CHECK(g_fb.reads==r0+2 && !im.V3Tracks[5*2].Unread && a.size()==X.size(),"retried");
+    CHECK(!im.LoadTrack(0,82),"beyond the drive rejected");
+    FloppyDisk[0].WrittenTo=true; int c0=g_fb.closes; im.Close(); FloppyDisk[0].WrittenTo=false;
+    CHECK(g_fb.closes==c0+1,"drive closed");
+    CHECK(!Exists("t_gw.sav.hfe"),"no save copy for a drive");
+    CHECK(ReadFile("t_gw.hfe").size()==strlen(desc),"descriptor untouched");
+    // can't connect: Open fails with a message
+    g_fb.open_ok=false;
+    CHECK(!im.Open((char*)"t_gw.hfe") && strstr(im.BridgeError,"no Greaseweazle"),"open error reported");
+    g_fb.open_ok=true;
+    remove("t_gw.hfe");
   }
 
   printf("%d checks, %d failures\n",checks,fails);

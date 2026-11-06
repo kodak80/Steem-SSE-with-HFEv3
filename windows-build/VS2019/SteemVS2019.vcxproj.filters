@@ -91,6 +91,9 @@
     <ClCompile Include="..\..\steem\disk_ghost.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\steem\floppybridge_drive.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\Steem\disk_hfe.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -478,6 +481,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\Steem\headers\disk_hfe.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\steem\headers\floppybridge_drive.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\steem\headers\disk_scp.h">

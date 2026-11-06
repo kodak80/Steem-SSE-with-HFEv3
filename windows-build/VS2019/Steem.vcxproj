@@ -6520,6 +6520,7 @@ copy "$(TargetPath)" "E:\emu\ST\bin\steem\SteemD64GDI.exe"
     <ClCompile Include="..\..\steem\diskman_diags.cpp" />
     <ClCompile Include="..\..\steem\diskman_drag.cpp" />
     <ClCompile Include="..\..\steem\disk_ghost.cpp" />
+    <ClCompile Include="..\..\steem\floppybridge_drive.cpp" />
     <ClCompile Include="..\..\steem\disk_hfe.cpp" />
     <ClCompile Include="..\..\steem\disk_scp.cpp" />
     <ClCompile Include="..\..\steem\disk_stw.cpp" />
@@ -7282,6 +7283,7 @@ copy "$(TargetPath)" "E:\emu\ST\bin\steem\SteemD64GDI.exe"
     <ClInclude Include="..\..\steem\headers\diskman.h" />
     <ClInclude Include="..\..\steem\headers\disk_ghost.h" />
     <ClInclude Include="..\..\steem\headers\disk_hfe.h" />
+    <ClInclude Include="..\..\steem\headers\floppybridge_drive.h" />
     <ClInclude Include="..\..\steem\headers\disk_scp.h" />
     <ClInclude Include="..\..\steem\headers\disk_stw.h" />
     <ClInclude Include="..\..\steem\headers\disk_stx.h" />

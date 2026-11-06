@@ -133,6 +133,8 @@ jobs:
           Copy-Item $exe.FullName "pkg\Steem$suffix-HFEv3.exe"
           Copy-Item release-notes-hfev3.txt pkg\README-HFEv3.txt
           Copy-Item gpl-3.0.txt pkg\
+          # real drive through FloppyBridge (Greaseweazle...): sample descriptor
+          if (Test-Path extras) { Copy-Item extras\* pkg\ }
           Compress-Archive -Path pkg\* -DestinationPath "Steem-SSE-HFEv3-${{ matrix.platform }}.zip"
 
       - uses: actions/upload-artifact@v4

@@ -259,6 +259,9 @@ compilation of about everything.
 #define SSE_DISK_RAR_SUPPORT_WIN // using unrar.dll or unrar64.dll
 #endif
 #define SSE_EMU_THREAD // reduces hiccups
+#if defined(SSE_DISK_HFE)
+#define SSE_FLOPPYBRIDGE // real drive on a Greaseweazle etc. via FloppyBridge (HFE bridge mode)
+#endif
 #define SSE_GEM_CONTROL_PANEL // fun!
 #define SSE_GUI_BIGICONS // for high DPI screens
 #define SSE_GUI_CONFIG // config (profile) mods
