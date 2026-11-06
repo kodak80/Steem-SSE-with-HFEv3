@@ -67,9 +67,17 @@ struct TFloppyBridgeCheck {
   int ids,bad_ids,good,bad;
   int id_track,id_side; // of the last good ID
   unsigned char id_list[FLOPPYBRIDGE_CHECK_MAX],bad_list[FLOPPYBRIDGE_CHECK_MAX];
+  // each data field found: sector number and where it is (bits)
+  int secs;
+  unsigned char sec_id[FLOPPYBRIDGE_CHECK_MAX];
+  int sec_start[FLOPPYBRIDGE_CHECK_MAX],sec_end[FLOPPYBRIDGE_CHECK_MAX];
 };
 void FloppyBridgeCheckTrack(const unsigned char *mfm,int nbits,
   TFloppyBridgeCheck &c);
+// average speed of each sector's data, relative to the track (1000 = track
+// average), eg "1:1001 2:999 ... 6:1052": shows a Copylock slow sector
+void FloppyBridgeSectorSpeeds(const TFloppyBridgeCheck &c,
+  const unsigned short *speed,int nbytes,char *out,int size);
 // smooth/normalise per-byte speeds (1000 = nominal) as density= says
 void FloppyBridgeSmoothSpeeds(unsigned short *speed,int nbytes,int mode,
   int *min_out,int *max_out);

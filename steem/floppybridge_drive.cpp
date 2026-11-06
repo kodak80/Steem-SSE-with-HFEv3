@@ -55,6 +55,7 @@ and the drive is used as DD.
 #include <floppybridge/floppybridge_lib.cpp>
 
 #include <ctype.h>
+#include <time.h>
 
 #include <stdarg.h>
 #include <chrono>
@@ -309,6 +310,7 @@ void FloppyBridgeCheckTrack(const BYTE *mfm,int nbits,TFloppyBridgeCheck &c) {
       if(id_size>=0 && pos-id_end<16*60)
       {
         int len=128<<id_size;
+        int data_start=pos;
         bool ok=true;
         for(int k=0;k<len+2 && ok;k++,pos+=16)
         {
@@ -321,6 +323,13 @@ void FloppyBridgeCheckTrack(const BYTE *mfm,int nbits,TFloppyBridgeCheck &c) {
             ok=(b==(crc>>8));
           else
             ok=(b==(crc&0xFF));
+        }
+        if(c.secs<FLOPPYBRIDGE_CHECK_MAX)
+        {
+          c.sec_id[c.secs]=(BYTE)id_sector;
+          c.sec_start[c.secs]=data_start;
+          c.sec_end[c.secs]=data_start+len*16;
+          c.secs++;
         }
         if(ok)
           c.good++;
@@ -337,6 +346,36 @@ void FloppyBridgeCheckTrack(const BYTE *mfm,int nbits,TFloppyBridgeCheck &c) {
     }
     else
       syncs=0;
+  }
+}
+
+
+void FloppyBridgeSectorSpeeds(const TFloppyBridgeCheck &c,const WORD *speed,
+  int nbytes,char *out,int size) {
+  if(!out || size<=0)
+    return;
+  out[0]=0;
+  if(!speed || nbytes<=0)
+    return;
+  long long total=0;
+  for(int i=0;i<nbytes;i++)
+    total+=speed[i];
+  long long mean=total/nbytes;
+  if(mean<=0)
+    return;
+  int n=0;
+  for(int k=0;k<c.secs && n<size;k++)
+  {
+    int b0=c.sec_start[k]/8,b1=c.sec_end[k]/8; // MFM bytes
+    if(b0<0) b0=0;
+    if(b1>nbytes) b1=nbytes;
+    if(b1<=b0)
+      continue;
+    long long sum=0;
+    for(int i=b0;i<b1;i++)
+      sum+=speed[i];
+    int rel=(int)((sum*1000/(b1-b0)+mean/2)/mean);
+    n+=snprintf(out+n,size-n,"%s%d:%d",n?" ":"",c.sec_id[k],rel);
   }
 }
 
@@ -424,7 +463,18 @@ void *FloppyBridgeOpen(const char *descriptor,const char *log_path,
     : SameText(s.density,"raw") ? FLOPPYBRIDGE_DENSITY_RAW
     : FLOPPYBRIDGE_DENSITY_AUTO;
   if(log_path && log_path[0] && !SameText(s.log,"off") && !SameText(s.log,"0"))
-    drv->log=fopen(log_path,"w");
+  {
+    // appended, so all the disks of a session (disk swaps re-open the
+    // descriptor) are in the log
+    drv->log=fopen(log_path,"a");
+    if(drv->log)
+    {
+      time_t now=time(NULL);
+      char when[64]="";
+      strftime(when,sizeof(when),"%Y-%m-%d %H:%M:%S",localtime(&now));
+      fprintf(drv->log,"\n---- %s inserted ----\n",when);
+    }
+  }
   Log(drv,"Steem FloppyBridge log - driver=%s port=%s drive=%s density=%s%s%s",
     s.driver,s.port,s.drive,s.density,s.config[0]?" config=":"",s.config);
   if(!FloppyBridgeAPI::isAvailable())
@@ -582,6 +632,7 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
 */
   std::vector<BYTE> tmp(max_bytes);
   int best_bits=0,best_score=-1,revs=0;
+  std::vector<WORD> best_raw; // speeds before smoothing, for the log
   TFloppyBridgeCheck best_check;
   memset(&best_check,0,sizeof(best_check));
   while(revs<3 && ElapsedMs(start)<5000)
@@ -635,6 +686,7 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
     return 0;
   }
   int mn,mx;
+  best_raw.assign(speed,speed+(best_bits+7)/8);
   FloppyBridgeSmoothSpeeds(speed,(best_bits+7)/8,drv->density,&mn,&mx);
   char info[300];
   FormatCheck(best_check,info,sizeof(info));
@@ -644,6 +696,14 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
   Log(drv,"track %2d side %d: %d bits, %d ms, %d rev, speed %d-%d%s | %s",
     track,side,best_bits,ElapsedMs(start),revs,mn,mx,
     density?" VARIABLE":"",info);
+  // where a protection would be: speed of each sector
+  if(density || track==0)
+  {
+    char sp[400];
+    FloppyBridgeSectorSpeeds(best_check,&best_raw[0],(int)best_raw.size(),
+      sp,sizeof(sp));
+    Log(drv,"          sector speed (track average 1000): %s",sp);
+  }
   return best_bits;
 }
 

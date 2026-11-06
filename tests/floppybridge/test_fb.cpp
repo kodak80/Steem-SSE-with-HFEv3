@@ -44,6 +44,15 @@ int main(){
     CHECK(c.id_track==3 && c.id_side==1 && c.id_list[0]==1 && c.id_list[8]==9,"IDs read");
     char s[300]; FormatCheck(c,s,sizeof(s));
     CHECK(strstr(s,"9 IDs (trk 3 side 1, sectors 1 2 3 4 5 6 7 8 9), data OK 9, bad 0")!=NULL,"log text: %s",s); }
+  { Mfm m=StTrack(0,0); auto v=m.Pack(); TFloppyBridgeCheck c; // per-sector speed
+    FloppyBridgeCheckTrack(&v[0],(int)m.bits.size(),c);
+    CHECK(c.secs==9 && c.sec_id[5]==6 && c.sec_end[5]-c.sec_start[5]==512*16,"data fields located");
+    int nb=(int)v.size(); std::vector<WORD> sp(nb,1000);
+    for(int i=c.sec_start[5]/8;i<c.sec_end[5]/8;i++) sp[i]=1052; // Copylock-style sector 6
+    char s[400]; FloppyBridgeSectorSpeeds(c,&sp[0],nb,s,sizeof(s));
+    CHECK(strstr(s,"5:99")!=NULL && strstr(s," 6:10")!=NULL,"%s",s);
+    int s6=atoi(strstr(s," 6:")+3),s5=atoi(strstr(s,"5:")+2);
+    CHECK(s6-s5>=45 && s6-s5<=55,"sector 6 ~5%% slower than 5: %s",s); }
   { Mfm m=StTrack(0,0,5); auto v=m.Pack(); TFloppyBridgeCheck c;
     FloppyBridgeCheckTrack(&v[0],(int)m.bits.size(),c);
     CHECK(c.good==8 && c.bad==1 && c.bad_list[0]==5,"bad data CRC found in sector 5");
@@ -91,7 +100,11 @@ int main(){
   { char err[256]=""; void*h=FloppyBridgeOpen("FLOPPYBRIDGE\n","t.log",err,sizeof(err));
     CHECK(!h && strstr(err,"not found"),"no DLL: %s",err);
     FILE*f=fopen("t.log","rb"); char b[1000]=""; if(f){fread(b,1,999,f);fclose(f);}
-    CHECK(strstr(b,"driver=greaseweazle") && strstr(b,"not found"),"log written: %s",b); remove("t.log"); }
+    CHECK(strstr(b,"driver=greaseweazle") && strstr(b,"not found") && strstr(b,"inserted ----"),"log written: %s",b);
+    FloppyBridgeOpen("FLOPPYBRIDGE\n","t.log",err,sizeof(err)); // second insert: appended
+    f=fopen("t.log","rb"); char b2[2000]=""; if(f){fread(b2,1,1999,f);fclose(f);}
+    const char*first=strstr(b2,"inserted ----"); CHECK(first && strstr(first+5,"inserted ----"),"log appended");
+    remove("t.log"); }
 
   printf("%d checks, %d failures\n",checks,fails);
   return fails!=0;
