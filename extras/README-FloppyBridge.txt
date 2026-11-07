@@ -53,10 +53,14 @@ TRY IT ON A COPY OR A BLANK DISK FIRST - never on an original you care about.
   and when the disk is ejected. Each written track is read back and every
   sector checked; if one doesn't read back the same, the track is written
   again, then reported in the log (WRITE FAILED).
-- Not written, to protect the disk (the log says why; the ST still sees its
-  changes until the disk is ejected):
-  - tracks read with variable density (copy protection: rewriting them at
-    the normal density would destroy it), unless the ST formats them;
+- The track is rewritten at the normal density. If some of its sectors
+  were at another density (sectors rewritten earlier by a drive turning at
+  a slightly different speed, or a density copy protection such as
+  Copylock) they're flattened, and the log says so. A real ST only rewrites
+  the sector it changes, so this is where Steem differs: a copy-protected
+  original written to this way may not load any more. Use copies.
+- Not written (the log says why; the ST still sees its changes until the
+  disk is ejected):
   - tracks that couldn't be read, unless the ST formats them (formatting a
     blank disk works);
   - a disk with its write-protect tab set: it also shows as write-protected

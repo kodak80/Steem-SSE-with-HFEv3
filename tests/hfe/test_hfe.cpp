@@ -368,11 +368,13 @@ int main(){
       CHECK(w.side==0 && w.track==3 && w.flags==0 && w.nbits==im.V3Tracks[3*2].nWords*16
         && WWord(w,5)==0x1234 && WWord(w,6)==X[6],"track written whole (side %d track %d flags %d)",w.side,w.track,w.flags); }
     CHECK(!im.V3Tracks[3*2].Dirty,"clean after saving");
-    // a protected track (variable density): flagged, the wrapper refuses it
+    // a variable-density track: flagged (the wrapper writes it at the normal
+    // density and logs it); once written it's nominal
+    CHECK(im.V3Tracks[3*2+1].Cyc!=NULL,"track 3 side 1 has variable density");
     im.SetImageWord(7,0x4444); // current track: 3 side 1 (variable density)
-    g_fb_write_result=-1; im.BridgeMotorOff(); g_fb_write_result=1;
-    CHECK(g_fb_writes.size()==2 && (g_fb_writes[1].flags&FLOPPYBRIDGE_WRITE_VARIABLE),"protected track flagged");
-    CHECK(im.V3Tracks[3*2+1].Data[7]==0x4444 && !im.V3Tracks[3*2+1].Dirty,"not saved but the ST still sees it");
+    im.BridgeMotorOff();
+    CHECK(g_fb_writes.size()==2 && (g_fb_writes[1].flags&FLOPPYBRIDGE_WRITE_VARIABLE),"variable track flagged");
+    CHECK(im.V3Tracks[3*2+1].Data[7]==0x4444 && !im.V3Tracks[3*2+1].Dirty && im.V3Tracks[3*2+1].Cyc==NULL,"written: now nominal");
     g_fdc_cmd=0;
     // disk removed: random bits, the cache is dropped
     g_fb.disk_in=false; r0=g_fb.reads;

@@ -92,13 +92,15 @@ int FloppyBridgeSectorDeviation(const TFloppyBridgeCheck &c,
 // from the index (the Greaseweazle can't start a write at a given sector).
 // Flags describing the track being written:
 #define FLOPPYBRIDGE_WRITE_FORMATTED 1 // rewritten whole by the ST (WRITE TRACK)
-#define FLOPPYBRIDGE_WRITE_VARIABLE 2  // read as variable density (protection)
+#define FLOPPYBRIDGE_WRITE_VARIABLE 2  // read as variable density: flattened
 #define FLOPPYBRIDGE_WRITE_UNREAD 4    // couldn't be read: we don't have it
 // true if Steem may write to the disk: write=on and no write-protect tab
 bool FloppyBridgeCanWrite(void *handle);
 // Write one track (bits as kept by Steem, first bit = MSB of mfm[0]), then
 // read it back and check every sector. 1: written and verified, 0: failed,
-// -1: not written (write=off, write-protected, or refused: see the log).
+// -1: not written (write=off, write-protected, or a track that couldn't be
+// read: see the log). Variable-density tracks are written at the normal
+// density (a warning is logged).
 int FloppyBridgeWriteTrack(void *handle,int side,int track,
   const unsigned char *mfm,int nbits,int flags);
 // Build the bits to write: the track rotated so that it starts in the

@@ -806,9 +806,9 @@ bool TImageHFE::BridgeCanWrite() {
 void TImageHFE::BridgeFlush(const THfeV3Track *keep) {
 /*  Tracks the ST wrote to are written to the real disk when the head leaves
     them, when the emulated motor stops, when Steem stops and when the disk
-    is ejected. The whole track is rewritten from the index (see
-    FloppyBridgeWriteTrack, which also refuses protected tracks and tracks
-    it couldn't read). The ST keeps seeing its changes either way.
+    is ejected. The whole track is rewritten from the index, at the normal
+    density (see FloppyBridgeWriteTrack, which refuses tracks it couldn't
+    read). The ST keeps seeing its changes either way.
 */
   if(!Bridge || !V3Tracks)
     return;
@@ -835,7 +835,7 @@ void TImageHFE::BridgeFlush(const THfeV3Track *keep) {
     if(r==1)
     {
       w.Unread=false;
-      if(w.Formatted && w.Cyc)
+      if(w.Cyc)
       { // rewritten at the normal density
         free(w.Cyc);
         w.Cyc=NULL;

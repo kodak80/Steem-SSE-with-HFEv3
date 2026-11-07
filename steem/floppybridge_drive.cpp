@@ -928,16 +928,22 @@ int FloppyBridgeWriteTrack(void *handle,int side,int track,const BYTE *mfm,
       track,side);
     return -1;
   }
-  // tracks we can't rewrite faithfully stay as they are on the disk (the
-  // ST still sees its changes until the disk is removed)
+/*  A track whose sectors read at different densities is rewritten at the
+    normal density: the whole track has to be rewritten, and the ST wants it
+    written. That flattens a density protection (Copylock), which a real ST
+    wouldn't (it rewrites one sector in place), so write=on is for copies.
+    It used to be refused, but most such tracks aren't protection, only
+    sectors rewritten earlier by a drive turning at another speed (Crazy
+    Cars' high-score track), and refusing left saves half done (the FAT on
+    track 0 written, the data not).
+*/
+  if((flags&FLOPPYBRIDGE_WRITE_VARIABLE) && !(flags&FLOPPYBRIDGE_WRITE_FORMATTED))
+    Log(drv,"track %2d side %d: had sectors at another density (rewritten earlier, or copy protection): written at the normal density",
+      track,side);
+  // a track we couldn't read stays as it is on the disk: we don't know the
+  // rest of it (the ST still sees its changes until the disk is removed)
   if(!(flags&FLOPPYBRIDGE_WRITE_FORMATTED))
   {
-    if(flags&FLOPPYBRIDGE_WRITE_VARIABLE)
-    {
-      Log(drv,"track %2d side %d: NOT written - variable density (copy protection), rewriting it would destroy it",
-        track,side);
-      return -1;
-    }
     if(flags&FLOPPYBRIDGE_WRITE_UNREAD)
     {
       Log(drv,"track %2d side %d: NOT written - the track couldn't be read, so the rest of it isn't known",
