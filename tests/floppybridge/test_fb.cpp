@@ -75,9 +75,32 @@ int main(){
   FloppyBridgeSmoothSpeeds(&sp[0],N,FLOPPYBRIDGE_DENSITY_AUTO,&mn,&mx);
   all=true; for(int i=0;i<N;i++) if(sp[i]!=1000) all=false;
   CHECK(all,"slow drive -> nominal (%d-%d)",mn,mx);
-  for(int i=0;i<N;i++) sp[i]=(WORD)(1000+rand()%61-30+((i>=5000&&i<5600)?60:0)); // slow sector
-  FloppyBridgeSmoothSpeeds(&sp[0],N,FLOPPYBRIDGE_DENSITY_AUTO,&mn,&mx);
-  CHECK(mx>1040 && sp[5300]>1040 && sp[1000]<1015 && sp[1000]>985,"6%% slow sector kept (%d %d, max %d)",sp[5300],sp[1000],mx);
+  { // decisions on a real ST track, values as measured with a Greaseweazle
+    Mfm m=StTrack(0,0); auto v=m.Pack(); TFloppyBridgeCheck c;
+    FloppyBridgeCheckTrack(&v[0],(int)m.bits.size(),c);
+    int nb=(int)v.size(); std::vector<WORD> t(nb);
+    // Total Recall disk 1 track 0: sector 6 5.5% slower, plus jitter
+    for(int i=0;i<nb;i++) t[i]=(WORD)(1000+rand()%61-30);
+    for(int i=c.sec_start[5]/8;i<c.sec_end[5]/8;i++) t[i]+=55;
+    CHECK(FloppyBridgeSectorDeviation(c,&t[0],nb)>=48,"Copylock deviation %d",FloppyBridgeSectorDeviation(c,&t[0],nb));
+    std::vector<WORD> u=t; FloppyBridgeSmoothSpeeds(&u[0],nb,FLOPPYBRIDGE_DENSITY_AUTO,&mn,&mx,&c);
+    int mid=(c.sec_start[5]+c.sec_end[5])/16, other=(c.sec_start[1]+c.sec_end[1])/16;
+    CHECK(u[mid]-u[other]>=40,"Copylock sector kept (%d vs %d)",u[mid],u[other]);
+    // ordinary track with drive wobble: sectors up to 3.3% apart, gap spikes to 7%
+    for(int i=0;i<nb;i++) t[i]=(WORD)(1000+rand()%61-30);
+    for(int k=0;k<9;k++){int w=(k==1||k==2)?30:(k==6?-20:0); for(int i=c.sec_start[k]/8;i<c.sec_end[k]/8;i++) t[i]+=w;}
+    for(int i=100;i<140;i++) t[i]=1070;
+    u=t; FloppyBridgeSmoothSpeeds(&u[0],nb,FLOPPYBRIDGE_DENSITY_AUTO,&mn,&mx,&c);
+    bool flat=true; for(int i=0;i<nb;i++) if(u[i]!=1000) flat=false;
+    CHECK(flat && mx>1030,"wobble + gap spike -> nominal (max %d, dev %d)",mx,FloppyBridgeSectorDeviation(c,&t[0],nb));
+    // fewer than 3 sectors: 8% rule
+    TFloppyBridgeCheck none; memset(&none,0,sizeof(none));
+    u=t; FloppyBridgeSmoothSpeeds(&u[0],nb,FLOPPYBRIDGE_DENSITY_AUTO,&mn,&mx,&none);
+    CHECK(u[0]==1000 && u[nb/2]==1000,"no sectors, <8%% -> nominal");
+    for(int i=5000;i<5600;i++) t[i]=1100;
+    u=t; FloppyBridgeSmoothSpeeds(&u[0],nb,FLOPPYBRIDGE_DENSITY_AUTO,&mn,&mx,&none);
+    CHECK(u[5300]>1070,"no sectors, 10%% slow area kept (%d)",u[5300]);
+  }
   for(int i=0;i<N;i++) sp[i]=1234;
   FloppyBridgeSmoothSpeeds(&sp[0],N,FLOPPYBRIDGE_DENSITY_OFF,&mn,&mx);
   CHECK(sp[0]==1000 && sp[N-1]==1000,"density=off");

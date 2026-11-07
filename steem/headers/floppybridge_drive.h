@@ -78,8 +78,13 @@ void FloppyBridgeCheckTrack(const unsigned char *mfm,int nbits,
 // average), eg "1:1001 2:999 ... 6:1052": shows a Copylock slow sector
 void FloppyBridgeSectorSpeeds(const TFloppyBridgeCheck &c,
   const unsigned short *speed,int nbytes,char *out,int size);
-// smooth/normalise per-byte speeds (1000 = nominal) as density= says
+// how far the most deviant sector is from the track's median sector speed,
+// in 1/1000 (eg 55 = 5.5%); -1 if fewer than 3 sectors were found
+int FloppyBridgeSectorDeviation(const TFloppyBridgeCheck &c,
+  const unsigned short *speed,int nbytes);
+// smooth/normalise per-byte speeds (1000 = nominal) as density= says; in
+// auto mode c (the sectors found on the track) decides, see the .cpp
 void FloppyBridgeSmoothSpeeds(unsigned short *speed,int nbytes,int mode,
-  int *min_out,int *max_out);
+  int *min_out,int *max_out,const TFloppyBridgeCheck *c=0);
 
 #endif//#ifndef SSEFLOPPYBRIDGE_H

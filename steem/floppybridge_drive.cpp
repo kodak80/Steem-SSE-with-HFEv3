@@ -56,6 +56,7 @@ and the drive is used as DD.
 
 #include <ctype.h>
 #include <time.h>
+#include <algorithm>
 
 #include <stdarg.h>
 #include <chrono>
@@ -380,16 +381,64 @@ void FloppyBridgeSectorSpeeds(const TFloppyBridgeCheck &c,const WORD *speed,
 }
 
 
+static int SectorAverage(const TFloppyBridgeCheck &c,int k,const WORD *speed,
+  int nbytes) {
+  int b0=c.sec_start[k]/8,b1=c.sec_end[k]/8; // MFM bytes
+  if(b0<0) b0=0;
+  if(b1>nbytes) b1=nbytes;
+  if(b1<=b0)
+    return -1;
+  long long sum=0;
+  for(int i=b0;i<b1;i++)
+    sum+=speed[i];
+  return (int)(sum/(b1-b0));
+}
+
+
+int FloppyBridgeSectorDeviation(const TFloppyBridgeCheck &c,const WORD *speed,
+  int nbytes) {
+  if(!speed || c.secs<3)
+    return -1;
+  std::vector<int> avg;
+  for(int k=0;k<c.secs;k++)
+  {
+    int a=SectorAverage(c,k,speed,nbytes);
+    if(a>0)
+      avg.push_back(a);
+  }
+  if(avg.size()<3)
+    return -1;
+  std::vector<int> sorted=avg;
+  std::sort(sorted.begin(),sorted.end());
+  int median=sorted[sorted.size()/2];
+  int dev=0;
+  for(size_t k=0;k<avg.size();k++)
+  {
+    int d=abs(avg[k]-median)*1000/median;
+    if(d>dev)
+      dev=d;
+  }
+  return dev;
+}
+
+
 /*  The speed FloppyBridge gives for each byte comes from the raw flux timing
-    and jitters by several % from byte to byte, also on a normal disk. Taken
-    as is it would make every track "variable density". In auto mode it is
-    averaged over 32 bytes and taken relative to the track's average (so a
-    drive turning a bit fast or slow doesn't count); if no part of the track
-    is more than 3% off, the track is nominal. A Copylock-style slow sector
-    stands out clearly from that.
+    and jitters by several % from byte to byte, also on a normal disk, and
+    the drive's speed wobbles a few % during a revolution.
+    In auto mode the speeds are averaged over 32 bytes and taken relative to
+    the track's average (so a drive turning a bit fast or slow doesn't
+    count). Whether the track is kept as variable density is decided per
+    sector: if one sector's data reads 4% or more slower or faster than the
+    track's median sector, it's a density protection, else the track is
+    nominal. Measured on real disks (Greaseweazle): ordinary sectors stay
+    within 3.3% of the median, the Copylock sector of Total Recall was 5.5%
+    slower. Tracks without sectors: nominal unless some part is 8% off.
+    (The first version used "any 32-byte stretch 3% off" and flagged most
+    ordinary tracks: drive wobble and gaps reach 6-7% over 32 bytes.)
 */
+#define FLOPPYBRIDGE_SECTOR_THRESHOLD 40 // 4%
 void FloppyBridgeSmoothSpeeds(WORD *speed,int nbytes,int mode,
-  int *min_out,int *max_out) {
+  int *min_out,int *max_out,const TFloppyBridgeCheck *c) {
   if(min_out) *min_out=1000;
   if(max_out) *max_out=1000;
   if(!speed || nbytes<=0)
@@ -440,7 +489,9 @@ void FloppyBridgeSmoothSpeeds(WORD *speed,int nbytes,int mode,
   }
   if(min_out) *min_out=mn;
   if(max_out) *max_out=mx;
-  bool nominal=(mn>=970 && mx<=1030);
+  int dev=c ? FloppyBridgeSectorDeviation(*c,speed,nbytes) : -1;
+  bool nominal=(dev>=0) ? (dev<FLOPPYBRIDGE_SECTOR_THRESHOLD)
+    : (mn>=920 && mx<=1080);
   for(int i=0;i<nbytes;i++)
     speed[i]=(WORD)(nominal ? 1000 : sm[i]);
 }
@@ -687,7 +738,8 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
   }
   int mn,mx;
   best_raw.assign(speed,speed+(best_bits+7)/8);
-  FloppyBridgeSmoothSpeeds(speed,(best_bits+7)/8,drv->density,&mn,&mx);
+  FloppyBridgeSmoothSpeeds(speed,(best_bits+7)/8,drv->density,&mn,&mx,
+    &best_check);
   char info[300];
   FormatCheck(best_check,info,sizeof(info));
   bool density=false;
