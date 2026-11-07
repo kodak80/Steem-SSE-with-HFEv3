@@ -36,6 +36,8 @@ inserted from the disk manager like any image:
   density=auto          ; auto (default), off or raw: see FloppyBridgeSmoothSpeeds
   cache=off             ; off (default) or on: FloppyBridge reads ahead in the
                         ; background, also while Steem is stopped
+  write=off             ; off (default) or on: write what the ST writes to the
+                        ; disk, a whole track at a time (FloppyBridgeWriteTrack)
   ;config=...           ; or a complete FloppyBridge config string
 
 The bridge runs in "stalling" mode: when the emulated FDC needs a track that
@@ -72,6 +74,8 @@ struct TFloppyBridgeDrive {
   TFbClock::time_point t0;
   int density; // 0 auto, 1 off, 2 raw
   bool disk_in;
+  bool write;   // write=on
+  int rev_bits; // length of a revolution, from the last track read
 };
 
 
@@ -132,7 +136,7 @@ static bool ContainsText(const char *text,const char *word) {
 
 // descriptor settings
 struct TFloppyBridgeSettings {
-  char driver[64],port[64],drive[16],log[16],density[16],cache[16];
+  char driver[64],port[64],drive[16],log[16],density[16],cache[16],write[16];
   char config[1024];
   TFloppyBridgeSettings() {
     strcpy(driver,"greaseweazle");
@@ -141,6 +145,7 @@ struct TFloppyBridgeSettings {
     strcpy(log,"on");
     strcpy(density,"auto");
     strcpy(cache,"off");
+    strcpy(write,"off");
     config[0]=0;
   }
 };
@@ -188,6 +193,7 @@ static void ParseDescriptor(const char *text,TFloppyBridgeSettings &s) {
       else if(SameText(key,"log")) { dst=s.log; dst_size=sizeof(s.log); }
       else if(SameText(key,"density")) { dst=s.density; dst_size=sizeof(s.density); }
       else if(SameText(key,"cache")) { dst=s.cache; dst_size=sizeof(s.cache); }
+      else if(SameText(key,"write")) { dst=s.write; dst_size=sizeof(s.write); }
       if(dst)
       {
         strncpy(dst,val,dst_size-1);
@@ -266,7 +272,7 @@ void FloppyBridgeCheckTrack(const BYTE *mfm,int nbits,TFloppyBridgeCheck &c) {
     return;
   WORD reg=0;
   int syncs=0,last_sync=-100;
-  int id_size=-1,id_end=-100000,id_sector=0;
+  int id_size=-1,id_end=-100000,id_sector=0,id_pos=0;
   for(int i=0;i<nbits;i++)
   {
     reg=(WORD)((reg<<1)|MfmBit(mfm,i));
@@ -303,6 +309,7 @@ void FloppyBridgeCheckTrack(const BYTE *mfm,int nbits,TFloppyBridgeCheck &c) {
         id_size=f[3]&3;
         id_sector=f[2];
         id_end=pos;
+        id_pos=i-47; // first of the 3 syncs
       }
       else
         c.bad_ids++;
@@ -317,23 +324,30 @@ void FloppyBridgeCheckTrack(const BYTE *mfm,int nbits,TFloppyBridgeCheck &c) {
         int len=128<<id_size;
         int data_start=pos;
         bool ok=true;
-        for(int k=0;k<len+2 && ok;k++,pos+=16)
+        int stored=0;
+        for(int k=0;k<len+2;k++,pos+=16)
         {
           int b=MfmByte(mfm,nbits,pos);
           if(b<0)
+          {
             ok=false;
-          else if(k<len)
+            break;
+          }
+          if(k<len)
             crc=Crc16(crc,(BYTE)b);
-          else if(k==len)
-            ok=(b==(crc>>8));
           else
-            ok=(b==(crc&0xFF));
+            stored=(stored<<8)|b;
         }
+        if(ok)
+          ok=(stored==crc);
         if(c.secs<FLOPPYBRIDGE_CHECK_MAX)
         {
           c.sec_id[c.secs]=(BYTE)id_sector;
           c.sec_start[c.secs]=data_start;
           c.sec_end[c.secs]=data_start+len*16;
+          c.sec_id_pos[c.secs]=id_pos;
+          c.sec_crc[c.secs]=crc;
+          c.sec_good[c.secs]=ok;
           c.secs++;
         }
         if(ok)
@@ -514,6 +528,8 @@ void *FloppyBridgeOpen(const char *descriptor,const char *log_path,
   drv->log=NULL;
   drv->t0=TFbClock::now();
   drv->disk_in=false;
+  drv->write=SameText(s.write,"on")||SameText(s.write,"1");
+  drv->rev_bits=0;
   drv->density=SameText(s.density,"off") ? FLOPPYBRIDGE_DENSITY_OFF
     : SameText(s.density,"raw") ? FLOPPYBRIDGE_DENSITY_RAW
     : FLOPPYBRIDGE_DENSITY_AUTO;
@@ -530,8 +546,9 @@ void *FloppyBridgeOpen(const char *descriptor,const char *log_path,
       fprintf(drv->log,"\n---- %s inserted ----\n",when);
     }
   }
-  Log(drv,"Steem FloppyBridge log - driver=%s port=%s drive=%s density=%s cache=%s%s%s",
-    s.driver,s.port,s.drive,s.density,s.cache,s.config[0]?" config=":"",s.config);
+  Log(drv,"Steem FloppyBridge log - driver=%s port=%s drive=%s density=%s cache=%s write=%s%s%s",
+    s.driver,s.port,s.drive,s.density,s.cache,drv->write?"on":"off",
+    s.config[0]?" config=":"",s.config);
   if(!FloppyBridgeAPI::isAvailable())
   {
 #ifdef _WIN64
@@ -778,6 +795,7 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
       api->isReady()?"yes":"no",api->isDiskInDrive()?"in":"not detected");
     return 0;
   }
+  drv->rev_bits=best_bits;
   int mn,mx;
   best_raw.assign(speed,speed+(best_bits+7)/8);
   FloppyBridgeSmoothSpeeds(speed,(best_bits+7)/8,drv->density,&mn,&mx,
@@ -799,6 +817,201 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
     Log(drv,"          sector speed (track average 1000): %s",sp);
   }
   return best_bits;
+}
+
+///////////
+// writing
+///////////
+
+static inline void SetMfmBit(BYTE *mfm,int i,int b) {
+  if(b)
+    mfm[i>>3]|=(BYTE)(0x80>>(i&7));
+  else
+    mfm[i>>3]&=(BYTE)~(0x80>>(i&7));
+}
+
+
+int FloppyBridgePrepareWrite(const BYTE *mfm,int nbits,int rev_bits,
+  BYTE *out,int out_size,int *gap_bits,int *rotate_bits) {
+  if(gap_bits) *gap_bits=0;
+  if(rotate_bits) *rotate_bits=0;
+  if(!mfm || nbits<16 || !out)
+    return 0;
+  if(rev_bits<=0)
+    rev_bits=nbits;
+  // the largest gap: between the end of a data field (+CRC) and the
+  // preamble (12 x $00) of the next sector's ID, going round the track
+  TFloppyBridgeCheck c;
+  FloppyBridgeCheckTrack(mfm,nbits,c);
+  int cut=0,gap=nbits; // no sectors: no constraint
+  if(c.secs>=1)
+  {
+    gap=-1;
+    for(int k=0;k<c.secs;k++)
+    {
+      int end=c.sec_end[k]+32; // after the CRC
+      int next=(k+1<c.secs) ? c.sec_id_pos[k+1] : c.sec_id_pos[0]+nbits;
+      int g=next-12*16-end;
+      if(g>gap)
+      {
+        gap=g;
+        cut=end+16*((g/2)/16); // whole bytes after the data: same MFM phase
+      }
+    }
+    if(gap<0)
+      gap=0;
+    cut%=nbits;
+  }
+  // ~1% more than a revolution, by padding with gap or cutting into it;
+  // each side of the cut has gap/2 bits to give
+  int target=rev_bits+rev_bits/100;
+  int room=(gap/2-32)/16*16;
+  if(room<0)
+    room=0;
+  int delta=target-nbits;
+  if(delta>room) delta=room;
+  if(delta<-room) delta=-room;
+  delta=delta/16*16;
+  int total=nbits+delta;
+  if(total<=0 || (total+7)/8>out_size)
+    return 0;
+  memset(out,0,(total+7)/8);
+  for(int i=0;i<total;i++)
+  {
+    // past the end of the track (padding): repeat the gap the write
+    // started with, so where it overwrites the start it writes the same
+    int src=(i<nbits) ? cut+i : cut+(i-nbits)%(gap/2>16?gap/2:16);
+    SetMfmBit(out,i,MfmBit(mfm,src%nbits));
+  }
+  if(gap_bits) *gap_bits=gap;
+  if(rotate_bits) *rotate_bits=cut;
+  return total;
+}
+
+
+bool FloppyBridgeCanWrite(void *handle) {
+  TFloppyBridgeDrive *drv=(TFloppyBridgeDrive*)handle;
+  return drv && drv->api && drv->write && !drv->api->isWriteProtected();
+}
+
+
+// every good sector of what we wrote must read back, same ID, same data
+static bool SameSectors(const TFloppyBridgeCheck &wrote,
+  const TFloppyBridgeCheck &read,int *missing) {
+  int miss=0;
+  for(int k=0;k<wrote.secs;k++)
+  {
+    if(!wrote.sec_good[k])
+      continue;
+    bool found=false;
+    for(int j=0;j<read.secs && !found;j++)
+      found=(read.sec_good[j] && read.sec_id[j]==wrote.sec_id[k]
+        && read.sec_crc[j]==wrote.sec_crc[k]);
+    if(!found)
+      miss++;
+  }
+  if(missing)
+    *missing=miss;
+  return !miss && read.ids>=wrote.ids;
+}
+
+
+int FloppyBridgeWriteTrack(void *handle,int side,int track,const BYTE *mfm,
+  int nbits,int flags) {
+  TFloppyBridgeDrive *drv=(TFloppyBridgeDrive*)handle;
+  if(!drv || !drv->api || !mfm || nbits<16)
+    return -1;
+  FloppyBridgeAPI *api=drv->api;
+  if(!drv->write)
+  {
+    Log(drv,"track %2d side %d: written by the ST, NOT saved to the disk (write=off)",
+      track,side);
+    return -1;
+  }
+  // tracks we can't rewrite faithfully stay as they are on the disk (the
+  // ST still sees its changes until the disk is removed)
+  if(!(flags&FLOPPYBRIDGE_WRITE_FORMATTED))
+  {
+    if(flags&FLOPPYBRIDGE_WRITE_VARIABLE)
+    {
+      Log(drv,"track %2d side %d: NOT written - variable density (copy protection), rewriting it would destroy it",
+        track,side);
+      return -1;
+    }
+    if(flags&FLOPPYBRIDGE_WRITE_UNREAD)
+    {
+      Log(drv,"track %2d side %d: NOT written - the track couldn't be read, so the rest of it isn't known",
+        track,side);
+      return -1;
+    }
+  }
+  bool upper=(side!=0);
+  api->setMotorStatus(upper,true);
+  if(api->isWriteProtected())
+  {
+    Log(drv,"track %2d side %d: NOT written - disk is write-protected",track,side);
+    return -1;
+  }
+  int rev=drv->rev_bits ? drv->rev_bits : nbits;
+  std::vector<BYTE> buf(nbits/8+rev/8+64);
+  int gap=0,rotate=0;
+  int total=FloppyBridgePrepareWrite(mfm,nbits,rev,&buf[0],(int)buf.size(),
+    &gap,&rotate);
+  if(!total)
+    return 0;
+  TFloppyBridgeCheck wrote;
+  FloppyBridgeCheckTrack(mfm,nbits,wrote);
+  int result=0;
+  for(int attempt=0;attempt<2 && result!=1;attempt++)
+  {
+    TFbClock::time_point start=TFbClock::now();
+    // whole bytes: pad the last one with the bits that follow (gap)
+    int nbytes=(total+7)/8;
+    if(!api->writeMFMTrackToBuffer(upper,(unsigned int)track,true,nbytes,&buf[0]))
+    {
+      Log(drv,"track %2d side %d: write request refused by FloppyBridge",track,side);
+      continue;
+    }
+    // queued: wait for the write, then FloppyBridge reads the track back
+    int ms=0;
+    for(;ms<5000 && api->isWritePending();ms+=10)
+      FbSleep(10);
+    if(api->isWriteProtected())
+    {
+      Log(drv,"track %2d side %d: NOT written - disk is write-protected",track,side);
+      return -1;
+    }
+    // verify: read it back like the ST would
+    std::vector<BYTE> back(buf.size()+8192);
+    int bits=0;
+    for(int w=0;w<5000 && bits<=0;w+=10)
+    {
+      bits=api->getMFMTrack(upper,(unsigned int)track,false,(int)back.size(),
+        &back[0]);
+      if(bits<=0)
+        FbSleep(10);
+    }
+    TFloppyBridgeCheck read;
+    memset(&read,0,sizeof(read));
+    if(bits>0)
+      FloppyBridgeCheckTrack(&back[0],bits,read);
+    int missing=0;
+    bool ok=(bits>0 && SameSectors(wrote,read,&missing));
+    char info[300];
+    FormatCheck(read,info,sizeof(info));
+    Log(drv,"track %2d side %d: WRITTEN %d bits (gap %d, rotated %d), %d ms, verify %s | %s",
+      track,side,total,gap/16,rotate/16,ElapsedMs(start),
+      ok ? "OK" : (bits>0 ? "FAILED" : "NO DATA"),info);
+    if(ok)
+      result=1;
+    else if(bits>0)
+      Log(drv,"          %d sector(s) didn't read back the same%s",missing,
+        attempt ? "" : ", writing again");
+  }
+  if(result!=1)
+    Log(drv,"track %2d side %d: WRITE FAILED - the track on the disk may be damaged",
+      track,side);
+  return result;
 }
 
 #endif//#if defined(SSE_FLOPPYBRIDGE)

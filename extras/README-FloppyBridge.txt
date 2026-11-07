@@ -38,11 +38,35 @@ range and the sectors found and checked, eg
   (trk 0 side 0, sectors 1 2 3 4 5 6 7 8 9), data OK 9, bad 0
 If a disk doesn't boot, the log shows whether the drive read it correctly.
 
-Limits of this first version
-----------------------------
-- Read-only: the disk is shown as write-protected, nothing is written to it.
+Writing to the disk (write=on)
+------------------------------
+By default the real disk is read-only: it shows as write-protected and
+nothing is written to it. With write=on in Greaseweazle.hfe, Steem writes
+what the ST writes (saved games, high scores, a formatted blank disk...).
+TRY IT ON A COPY OR A BLANK DISK FIRST - never on an original you care about.
+
+- The Greaseweazle can't start writing at a given sector, so a track the ST
+  changed is rewritten whole, from the index hole: the track as Steem read
+  it, with the ST's changes. The join falls in the track's largest gap.
+- It's written when the head moves to another track, when the ST's drive
+  motor stops (a couple of seconds after the last access), when Steem stops
+  and when the disk is ejected. Each written track is read back and every
+  sector checked; if one doesn't read back the same, the track is written
+  again, then reported in the log (WRITE FAILED).
+- Not written, to protect the disk (the log says why; the ST still sees its
+  changes until the disk is ejected):
+  - tracks read with variable density (copy protection: rewriting them at
+    the normal density would destroy it), unless the ST formats them;
+  - tracks that couldn't be read, unless the ST formats them (formatting a
+    blank disk works);
+  - a disk with its write-protect tab set: it also shows as write-protected
+    in Steem (re-insert Greaseweazle.hfe after moving the tab).
+- Steem pauses while a track is written and checked (about a second).
+
+Limits
+------
 - Swapping the real disk: eject and re-insert Greaseweazle.hfe in Steem so
-  the ST sees a disk change.
+  the ST sees a disk change. Tracks written by the ST are saved before.
 - One revolution per track is kept, so protections that need weak bits to
   read differently each time may not pass yet.
 - Windows only.

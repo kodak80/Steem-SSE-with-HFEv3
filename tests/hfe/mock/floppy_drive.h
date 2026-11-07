@@ -16,5 +16,6 @@ struct TImageMfm {
 };
 struct TFloppyDrive { TImageMfm *MfmManager; };
 extern TFloppyDrive FloppyDrive[3];
-struct TFdcMock { struct {WORD encoded;} Mfm; int CommandType() const { return 0; } };
+extern int g_fdc_cmd; // type of the current FDC command (tests set it)
+struct TFdcMock { struct {WORD encoded;} Mfm; int CommandType() const { return g_fdc_cmd; } };
 extern TFdcMock Fdc;

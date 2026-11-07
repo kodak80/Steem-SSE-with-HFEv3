@@ -6752,7 +6752,9 @@ int TSF314::SetDisk(EasyStr FilePath,EasyStr CompressedDiskName,
     }
 #if defined(SSE_FLOPPYBRIDGE)
     if(ImageHFE[Id].Bridge)
-      disk.ReadOnly=true; // real drive: read-only for now (WP follows RO)
+      // real drive: writable only with write=on in the descriptor and no
+      // write-protect tab on the disk (WP follows RO)
+      disk.ReadOnly=!ImageHFE[Id].BridgeCanWrite();
 #endif
     FloppyDisk[Id].TrackBytes=DISK_BYTES_PER_TRACK; //default
     // check if HD disk

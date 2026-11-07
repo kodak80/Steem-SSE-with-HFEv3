@@ -66,6 +66,7 @@ struct  TImageHFE:public TImageMfm {
     WORD nWords;
     bool Dirty;  // written to by the emulated FDC
     bool Unread; // bridge mode: no data from the drive, random bits for now
+    bool Formatted; // bridge mode: rewritten whole by the ST (WRITE TRACK)
   };
   bool DecodeV3Track(BYTE side,BYTE track,THfeV3Track &t);
   bool EncodeV3Track(BYTE track);
@@ -83,6 +84,9 @@ struct  TImageHFE:public TImageMfm {
   bool OpenBridge(const char *descriptor,const char *path);
   bool LoadBridgeTrack(BYTE side,BYTE track,THfeV3Track &t);
   void BridgeMotorOff(); // the emulated motor stopped
+  // write the tracks the ST changed to the real disk (except keep)
+  void BridgeFlush(const THfeV3Track *keep);
+  bool BridgeCanWrite(); // write=on and the disk isn't write-protected
   void *Bridge; // FloppyBridgeOpen() handle, NULL for an image file
   picfileformatheader BridgeHeader; // stands in for the file header
   bool BridgeDiskIn;

@@ -197,6 +197,7 @@ void TImageHFE::Close() {
   if(Bridge)
   {
     TRACE_LOG("FloppyBridge drive close\n");
+    BridgeFlush(NULL); // what the ST wrote and isn't saved yet
     FloppyBridgeClose(Bridge);
     Bridge=NULL;
     bridge=true;
@@ -465,7 +466,7 @@ void TImageHFE::FreeV3TrackData(THfeV3Track &t) {
   free(t.Cyc);
   t.Data=t.Weak=t.Cyc=NULL;
   t.nWords=0;
-  t.Dirty=t.Unread=false;
+  t.Dirty=t.Unread=t.Formatted=false;
 }
 
 
@@ -662,7 +663,7 @@ bool TImageHFE::MakeUnformattedTrack(THfeV3Track &t) {
   t.Data=(WORD*)malloc(t.nWords*sizeof(WORD));
   t.Weak=(WORD*)malloc(t.nWords*sizeof(WORD));
   t.Cyc=NULL;
-  t.Dirty=false;
+  t.Dirty=t.Formatted=false;
   if(!t.Data || !t.Weak)
   {
     free(t.Data);
@@ -692,7 +693,7 @@ bool TImageHFE::BitsToV3Track(const BYTE *mfm,const WORD *speed,int nbits,
 */
   t.Data=t.Weak=t.Cyc=NULL;
   t.nWords=0;
-  t.Dirty=t.Unread=false;
+  t.Dirty=t.Unread=t.Formatted=false;
   if(!mfm || nbits<16)
     return false;
   if(nbits>0xFFFF*16)
@@ -790,22 +791,76 @@ bool TImageHFE::OpenBridge(const char *descriptor,const char *path) {
 
 void TImageHFE::BridgeMotorOff() {
   if(Bridge)
+  {
+    BridgeFlush(NULL); // the ST has finished: save what it wrote
     FloppyBridgeMotorOff(Bridge);
+  }
+}
+
+
+bool TImageHFE::BridgeCanWrite() {
+  return Bridge && FloppyBridgeCanWrite(Bridge);
+}
+
+
+void TImageHFE::BridgeFlush(const THfeV3Track *keep) {
+/*  Tracks the ST wrote to are written to the real disk when the head leaves
+    them, when the emulated motor stops, when Steem stops and when the disk
+    is ejected. The whole track is rewritten from the index (see
+    FloppyBridgeWriteTrack, which also refuses protected tracks and tracks
+    it couldn't read). The ST keeps seeing its changes either way.
+*/
+  if(!Bridge || !V3Tracks)
+    return;
+  for(int i=0;i<NUM_TRACKS*2;i++)
+  {
+    THfeV3Track &w=V3Tracks[i];
+    if(&w==keep || !w.Dirty || !w.Data || !w.nWords)
+      continue;
+    int flags=(w.Formatted ? FLOPPYBRIDGE_WRITE_FORMATTED : 0)
+      |(w.Cyc ? FLOPPYBRIDGE_WRITE_VARIABLE : 0)
+      |(w.Unread ? FLOPPYBRIDGE_WRITE_UNREAD : 0);
+    BYTE *mfm=(BYTE*)malloc(w.nWords*2);
+    if(!mfm)
+      continue;
+    for(int k=0;k<w.nWords;k++)
+    {
+      mfm[k*2]=(BYTE)(w.Data[k]>>8);
+      mfm[k*2+1]=(BYTE)(w.Data[k]&0xFF);
+    }
+    int r=FloppyBridgeWriteTrack(Bridge,i%2,i/2,mfm,w.nWords*16,flags);
+    free(mfm);
+    TRACE_LOG("FloppyBridge write side %d track %d: %d\n",i%2,i/2,r);
+    w.Dirty=false; // tried: don't try again (it's in the log)
+    if(r==1)
+    {
+      w.Unread=false;
+      if(w.Formatted && w.Cyc)
+      { // rewritten at the normal density
+        free(w.Cyc);
+        w.Cyc=NULL;
+      }
+      w.Formatted=false;
+    }
+  }
 }
 
 
 bool TImageHFE::LoadBridgeTrack(BYTE side,BYTE track,THfeV3Track &t) {
+  // the head moved to another track: save the ones the ST wrote to
+  BridgeFlush(&t);
   bool disk_in=FloppyBridgeDiskInDrive(Bridge);
   if(disk_in!=BridgeDiskIn)
   {
     // disk taken out or put in: what was read belongs to another disk
+    // (tracks written and not saved yet are lost: the disk is gone)
     TRACE_LOG("FloppyBridge disk %s\n",disk_in?"inserted":"removed");
     for(int i=0;i<NUM_TRACKS*2;i++)
       FreeV3TrackData(V3Tracks[i]);
     BridgeDiskIn=disk_in;
   }
-  if(t.Data && !t.Unread)
-    return true; // already read from this disk
+  if(t.Data && (t.Dirty || !t.Unread))
+    return true; // already read from this disk, or written by the ST
   FreeV3TrackData(t);
   // with the motor off FloppyBridge may not know yet that a disk is in:
   // always ask the drive (it gives up quickly if there's really none)
@@ -1059,14 +1114,16 @@ TRACE_LOG("RPM %d  WP %d WA %X offset %d step %X TR0/1 %X%X TR1/1 %X%X\n",
 
 
 void TImageHFE::SetImageWord(WORD position,WORD mfm_data) {
-#if defined(SSE_FLOPPYBRIDGE)
-  if(Bridge)
-    return; // read-only: the disk is write-protected anyway
-#endif
   if(IsV3)
   {
     if(V3Current && V3Current->Data && V3Current->nWords)
     {
+#if defined(SSE_FLOPPYBRIDGE)
+      // real drive: WRITE TRACK rewrites the whole track, so it can be
+      // written even if it couldn't be read or is protected (formatting)
+      if(Bridge && Fdc.CommandType()==3)
+        V3Current->Formatted=true;
+#endif
       int index=position%V3Current->nWords;
       V3Current->Data[index]=mfm_data;
       if(V3Current->Weak)

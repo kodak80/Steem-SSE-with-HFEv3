@@ -64,6 +64,48 @@ int main(){
     FloppyBridgeCheckTrack(&v[0],100000,c);
     CHECK(c.good==0,"random bits: no good sector"); }
 
+  // writing: rotate into the largest gap, pad to ~1% over a revolution
+  { Mfm m=StTrack(4,1); auto v=m.Pack(); int n=(int)m.bits.size();
+    // the track as read: start it somewhere inside sector 3 (not at the index)
+    TFloppyBridgeCheck c0; FloppyBridgeCheckTrack(&v[0],n,c0);
+    int off=c0.sec_start[2]+1000; std::vector<BYTE> r((n+7)/8,0);
+    for(int i=0;i<n;i++) if(MfmBit(&v[0],(i+off)%n)) r[i/8]|=(BYTE)(0x80>>(i%8));
+    std::vector<BYTE> out(n/8+4000); int gap,rot;
+    int tot=FloppyBridgePrepareWrite(&r[0],n,n,&out[0],(int)out.size(),&gap,&rot);
+    CHECK(tot>n && tot<=n+n/100+16,"padded to ~1%% over a revolution (%d / %d)",tot,n);
+    TFloppyBridgeCheck c; FloppyBridgeCheckTrack(&out[0],tot,c);
+    CHECK(c.ids==9 && c.good==9 && c.bad==0,"all sectors intact in the write (%d %d)",c.ids,c.good);
+    // simulate the disk after the write: one revolution = n bits from the
+    // index, the end of the write overwrote its start
+    std::vector<BYTE> disk((n+7)/8,0);
+    for(int i=0;i<tot;i++) SetMfmBit(&disk[0],i%n,MfmBit(&out[0],i));
+    TFloppyBridgeCheck d; FloppyBridgeCheckTrack(&disk[0],n,d);
+    CHECK(d.ids==9 && d.good==9 && d.bad_ids==0,"disk after the write: 9 good sectors (%d %d)",d.ids,d.good);
+    CHECK(SameSectors(c0,d,NULL),"same sectors and data as before");
+    CHECK(gap/16>300 && MfmByte(&out[0],tot,0)==0x4E,"starts in the big gap (%d bytes, first byte %02X)",gap/16,MfmByte(&out[0],tot,0));
+    // a slower drive (revolution 1%% longer): still fits, no old data left
+    tot=FloppyBridgePrepareWrite(&r[0],n,n+n/100,&out[0],(int)out.size(),&gap,&rot);
+    CHECK(tot>=n+n/100 && tot<=n+n/50+16,"slow drive: %d bits",tot);
+    // longer track than the revolution (written by another drive): cut in the gap
+    tot=FloppyBridgePrepareWrite(&r[0],n,n-n/50,&out[0],(int)out.size(),&gap,&rot);
+    CHECK(tot<n,"fast drive: cut to %d",tot);
+    FloppyBridgeCheckTrack(&out[0],tot,c);
+    CHECK(c.good==9,"cut only gap (%d)",c.good);
+    // an unformatted track: no constraint
+    std::vector<BYTE> u(12500); for(auto&x:u) x=(BYTE)rand();
+    tot=FloppyBridgePrepareWrite(&u[0],100000,100000,&out[0],(int)out.size(),&gap,&rot);
+    CHECK(tot==100992 && rot==0,"unformatted: %d",tot);
+    CHECK(FloppyBridgePrepareWrite(&r[0],n,n,&out[0],100,&gap,&rot)==0,"buffer too small");
+  }
+  // verify: a changed sector is caught
+  { Mfm a1=StTrack(0,0),b1=StTrack(0,0,5); auto va=a1.Pack(),vb=b1.Pack();
+    TFloppyBridgeCheck ca,cb; FloppyBridgeCheckTrack(&va[0],(int)a1.bits.size(),ca); FloppyBridgeCheckTrack(&vb[0],(int)b1.bits.size(),cb);
+    int miss; CHECK(!SameSectors(ca,cb,&miss) && miss==1,"verify catches a bad sector (%d)",miss);
+    CHECK(SameSectors(ca,ca,&miss),"verify OK on the same track"); }
+  // descriptor: write=
+  { TFloppyBridgeSettings s; ParseDescriptor("FLOPPYBRIDGE\nwrite=on\n",s); CHECK(!strcmp(s.write,"on"),"write=on");
+    TFloppyBridgeSettings t; ParseDescriptor("FLOPPYBRIDGE\n",t); CHECK(!strcmp(t.write,"off"),"write off by default"); }
+
   // speed smoothing
   const int N=12500;
   std::vector<WORD> sp(N);
@@ -118,7 +160,7 @@ int main(){
   { FILE*f=fopen("../../../extras/Greaseweazle.hfe","rb"); CHECK(f!=NULL,"sample descriptor");
     if(f){ char b[4096]; size_t n=fread(b,1,4095,f); b[n]=0; fclose(f);
       TFloppyBridgeSettings s; ParseDescriptor(b,s);
-      CHECK(!strcmp(s.driver,"greaseweazle") && !strcmp(s.port,"auto") && !strcmp(s.drive,"A") && !strcmp(s.cache,"off"),"sample keys");
+      CHECK(!strcmp(s.driver,"greaseweazle") && !strcmp(s.port,"auto") && !strcmp(s.drive,"A") && !strcmp(s.cache,"off") && !strcmp(s.write,"off"),"sample keys");
       CHECK(!strncmp(b,"FLOPPYBRIDGE",12),"sample signature"); } }
 
   // no DLL here: open fails cleanly, and the log says why

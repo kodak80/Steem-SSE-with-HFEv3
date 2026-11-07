@@ -74,6 +74,9 @@ struct TFloppyBridgeCheck {
   int secs;
   unsigned char sec_id[FLOPPYBRIDGE_CHECK_MAX];
   int sec_start[FLOPPYBRIDGE_CHECK_MAX],sec_end[FLOPPYBRIDGE_CHECK_MAX];
+  int sec_id_pos[FLOPPYBRIDGE_CHECK_MAX]; // first sync of the sector's ID
+  int sec_crc[FLOPPYBRIDGE_CHECK_MAX]; // CRC of the data (read from disk)
+  unsigned char sec_good[FLOPPYBRIDGE_CHECK_MAX]; // data CRC OK
 };
 void FloppyBridgeCheckTrack(const unsigned char *mfm,int nbits,
   TFloppyBridgeCheck &c);
@@ -85,6 +88,26 @@ void FloppyBridgeSectorSpeeds(const TFloppyBridgeCheck &c,
 // in 1/1000 (eg 55 = 5.5%); -1 if fewer than 3 sectors were found
 int FloppyBridgeSectorDeviation(const TFloppyBridgeCheck &c,
   const unsigned short *speed,int nbytes);
+// Writing (write=on in the descriptor). A track is always rewritten whole,
+// from the index (the Greaseweazle can't start a write at a given sector).
+// Flags describing the track being written:
+#define FLOPPYBRIDGE_WRITE_FORMATTED 1 // rewritten whole by the ST (WRITE TRACK)
+#define FLOPPYBRIDGE_WRITE_VARIABLE 2  // read as variable density (protection)
+#define FLOPPYBRIDGE_WRITE_UNREAD 4    // couldn't be read: we don't have it
+// true if Steem may write to the disk: write=on and no write-protect tab
+bool FloppyBridgeCanWrite(void *handle);
+// Write one track (bits as kept by Steem, first bit = MSB of mfm[0]), then
+// read it back and check every sector. 1: written and verified, 0: failed,
+// -1: not written (write=off, write-protected, or refused: see the log).
+int FloppyBridgeWriteTrack(void *handle,int side,int track,
+  const unsigned char *mfm,int nbits,int flags);
+// Build the bits to write: the track rotated so that it starts in the
+// middle of its largest gap, then cut or padded with gap so that it lasts
+// ~1% more than a revolution (rev_bits): the end overwrites the start inside
+// the gap and nothing of the old track is left. Returns the number of bits,
+// 0 if out_size is too small.
+int FloppyBridgePrepareWrite(const unsigned char *mfm,int nbits,int rev_bits,
+  unsigned char *out,int out_size,int *gap_bits,int *rotate_bits);
 // smooth/normalise per-byte speeds (1000 = nominal) as density= says; in
 // auto mode c (the sectors found on the track) decides, see the .cpp
 void FloppyBridgeSmoothSpeeds(unsigned short *speed,int nbytes,int mode,

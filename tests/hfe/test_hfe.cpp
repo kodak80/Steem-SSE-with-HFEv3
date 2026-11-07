@@ -1,6 +1,7 @@
 // Unit tests for Steem SSE disk_hfe.cpp (HFE v1 + v3), run against mocks.
 #include "pch.h"
 #include "disk_hfe.h"
+#include "floppybridge_drive.h"
 #include <vector>
 
 int g_trace=0;
@@ -94,6 +95,14 @@ void FloppyBridgeClose(void*h){if(h==&g_fb_handle)g_fb.closes++;}
 int FloppyBridgeMaxCylinder(void*){return g_fb.max_cyl;}
 bool FloppyBridgeDiskInDrive(void*){return g_fb.disk_in;}
 int g_fb_motor_off=0; void FloppyBridgeMotorOff(void*){g_fb_motor_off++;}
+int g_fdc_cmd=0;
+struct TMockWrite { int side,track,nbits,flags; std::vector<BYTE> mfm; };
+std::vector<TMockWrite> g_fb_writes; int g_fb_write_result=1;
+bool FloppyBridgeCanWrite(void*){return true;}
+int FloppyBridgeWriteTrack(void*,int side,int track,const unsigned char*mfm,int nbits,int flags){
+  TMockWrite w; w.side=side; w.track=track; w.nbits=nbits; w.flags=flags; w.mfm.assign(mfm,mfm+(nbits+7)/8);
+  g_fb_writes.push_back(w); return g_fb_write_result;}
+static WORD WWord(const TMockWrite&w,int i){return (WORD)((w.mfm[i*2]<<8)|w.mfm[i*2+1]);}
 int FloppyBridgeReadTrack(void*,int side,int track,unsigned char*mfm,unsigned short*speed,int max_bytes){
   g_fb.reads++;
   if(!g_fb.disk_in) return 0; // the real drive gives up: no disk
@@ -347,9 +356,24 @@ int main(){
     g_fb.speed.assign(g_fb.speed.size(),1000);
     ReadTrack(im,0,3,&ok);
     CHECK(ok && im.V3Tracks[3*2].Cyc==NULL,"nominal track has no Cyc");
-    // writes are ignored, nothing saved
+    // writes go into the track, and to the drive when the head leaves it
+    g_fb_writes.clear(); g_fdc_cmd=2; // WRITE SECTOR
     im.SetImageWord(5,0x1234);
-    CHECK(im.V3Tracks[3*2].Data[5]==X[5] && !im.V3Tracks[3*2].Dirty,"write ignored");
+    CHECK(im.V3Tracks[3*2].Data[5]==0x1234 && im.V3Tracks[3*2].Dirty,"write kept in the track");
+    r0=g_fb.reads; ReadTrack(im,0,3,&ok);
+    CHECK(g_fb_writes.empty() && g_fb.reads==r0 && im.V3Tracks[3*2].Data[5]==0x1234,"same track: not saved yet, not re-read");
+    ReadTrack(im,1,3,&ok);
+    CHECK(g_fb_writes.size()==1,"saved when the head moves (%d)",(int)g_fb_writes.size());
+    if(g_fb_writes.size()==1){ TMockWrite&w=g_fb_writes[0];
+      CHECK(w.side==0 && w.track==3 && w.flags==0 && w.nbits==im.V3Tracks[3*2].nWords*16
+        && WWord(w,5)==0x1234 && WWord(w,6)==X[6],"track written whole (side %d track %d flags %d)",w.side,w.track,w.flags); }
+    CHECK(!im.V3Tracks[3*2].Dirty,"clean after saving");
+    // a protected track (variable density): flagged, the wrapper refuses it
+    im.SetImageWord(7,0x4444); // current track: 3 side 1 (variable density)
+    g_fb_write_result=-1; im.BridgeMotorOff(); g_fb_write_result=1;
+    CHECK(g_fb_writes.size()==2 && (g_fb_writes[1].flags&FLOPPYBRIDGE_WRITE_VARIABLE),"protected track flagged");
+    CHECK(im.V3Tracks[3*2+1].Data[7]==0x4444 && !im.V3Tracks[3*2+1].Dirty,"not saved but the ST still sees it");
+    g_fdc_cmd=0;
     // disk removed: random bits, the cache is dropped
     g_fb.disk_in=false; r0=g_fb.reads;
     a=ReadTrack(im,0,4,&ok);
@@ -359,16 +383,32 @@ int main(){
     g_fb.disk_in=true;
     a=ReadTrack(im,0,4,&ok);
     CHECK(ok && g_fb.reads==r0+2 && !im.V3Tracks[4*2].Unread && a.size()==X.size(),"disk back -> read");
-    im.BridgeMotorOff(); CHECK(g_fb_motor_off==1,"motor off passed to the drive");
+    im.BridgeMotorOff(); CHECK(g_fb_motor_off==2,"motor off passed to the drive");
     // read failure: random for now, retried next time
     g_fb.fail_reads=1; r0=g_fb.reads;
     a=ReadTrack(im,0,5,&ok);
     CHECK(ok && im.V3Tracks[5*2].Unread,"failed read -> unformatted");
+    // a track we couldn't read, written by WRITE SECTOR: flagged unread
+    g_fdc_cmd=2; im.SetImageWord(9,0x5555); size_t nw=g_fb_writes.size();
+    g_fb_write_result=-1; im.BridgeMotorOff(); g_fb_write_result=1; g_fdc_cmd=0;
+    CHECK(g_fb_writes.size()==nw+1 && g_fb_writes.back().flags==FLOPPYBRIDGE_WRITE_UNREAD,"unread track flagged (%d)",g_fb_writes.back().flags);
     a=ReadTrack(im,0,5,&ok);
     CHECK(g_fb.reads==r0+2 && !im.V3Tracks[5*2].Unread && a.size()==X.size(),"retried");
     CHECK(!im.LoadTrack(0,82),"beyond the drive rejected");
+    // formatting a track that couldn't be read (blank disk): WRITE TRACK
+    g_fb.fail_reads=1; ReadTrack(im,0,6,&ok);
+    CHECK(im.V3Tracks[6*2].Unread,"blank track");
+    g_fdc_cmd=3; for(int i=0;i<im.V3Tracks[6*2].nWords;i++) im.SetImageWord((WORD)i,0x9254); g_fdc_cmd=0;
+    size_t nf=g_fb_writes.size(); im.BridgeMotorOff();
+    CHECK(g_fb_writes.size()==nf+1 && g_fb_writes.back().flags==(FLOPPYBRIDGE_WRITE_FORMATTED|FLOPPYBRIDGE_WRITE_UNREAD),"formatted track flagged (%d)",g_fb_writes.back().flags);
+    r0=g_fb.reads; ReadTrack(im,0,6,&ok);
+    CHECK(!im.V3Tracks[6*2].Unread && g_fb.reads==r0 && im.V3Tracks[6*2].Data[100]==0x9254,"written: kept, not re-read");
+    // eject: what isn't saved yet is written
+    g_fdc_cmd=2; ReadTrack(im,0,7,&ok); im.SetImageWord(3,0x1111); g_fdc_cmd=0;
+    size_t ne=g_fb_writes.size();
     FloppyDisk[0].WrittenTo=true; int c0=g_fb.closes; im.Close(); FloppyDisk[0].WrittenTo=false;
     CHECK(g_fb.closes==c0+1,"drive closed");
+    CHECK(g_fb_writes.size()==ne+1 && g_fb_writes.back().track==7 && WWord(g_fb_writes.back(),3)==0x1111,"saved on eject");
     CHECK(!Exists("t_gw.sav.hfe"),"no save copy for a drive");
     CHECK(ReadFile("t_gw.hfe").size()==strlen(desc),"descriptor untouched");
     // can't connect: Open fails with a message

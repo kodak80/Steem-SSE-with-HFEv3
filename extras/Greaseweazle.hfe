@@ -13,3 +13,6 @@ density=auto          ; auto: only real density changes (protections); off; raw
 cache=off             ; off: drive spins only when the ST reads, like a real ST
                       ; on: reads the whole disk ahead (faster loading, but the
                       ; drive also runs while Steem is stopped)
+write=off             ; off: the disk is read-only (write-protected for the ST)
+                      ; on: what the ST writes is written to the disk - try it
+                      ; on a copy first, see README-FloppyBridge.txt
