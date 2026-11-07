@@ -6,6 +6,26 @@ branch (r1511), adding support for HFE v3 floppy images ("HXCHFEV3", as
 written by the HxC Floppy Emulator software and used by FlashFloppy and HxC
 hardware). Source: https://github.com/kodak80/Steem-SSE-with-HFEv3
 
+What's new in HFEv3-6
+- Swapping real disks (Greaseweazle / FloppyBridge). Just change the disk
+  in the drive while it's quiet, like on a real ST - no need to eject and
+  re-insert Greaseweazle.hfe any more. Steem notices the change from the
+  drive's disk-change line (if it has one), from the write-protect sensor
+  (as the ST itself does), and by checking the disk again after the drive
+  has been idle; the ST then sees a disk change and everything read from
+  the old disk is dropped. Wait for the drive to go quiet before taking a
+  disk out, so tracks the ST wrote to are saved first.
+- Weak bits. When a sector has a bad CRC, more revolutions are read: if the
+  sector reads correctly on one of them, that copy is used; if it's bad
+  every time and changes from one revolution to the next, the bytes that
+  change read differently each time the ST reads them, as on the real disk.
+  A sector that's bad but always the same (a deliberate CRC error, as in
+  Copylock or UN Squadron) is left as it is.
+- Greaseweazle.log shows disk checks, write-protect changes, the tracks the
+  ST reads after a disk change, and more detail on bad sectors.
+  Confirmed: Total Recall disk 1 -> disk 2 swap, Copylock still passes,
+  Dungeon Master (copy) loads and plays, UN Squadron's protection track.
+
 What's new in HFEv3-5
 - Writing to real floppy disks (Greaseweazle / FloppyBridge). Add write=on
   to Greaseweazle.hfe and what the ST writes goes to the real disk: saved
