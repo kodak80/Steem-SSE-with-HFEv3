@@ -10,3 +10,6 @@ port=auto             ; auto, or the serial port, eg COM5
 drive=A               ; A or B (PC cable, try B if nothing is read), 0-3 Shugart
 log=on                ; on: what is read goes to Greaseweazle.log, next to this file
 density=auto          ; auto: only real density changes (protections); off; raw
+cache=off             ; off: drive spins only when the ST reads, like a real ST
+                      ; on: reads the whole disk ahead (faster loading, but the
+                      ; drive also runs while Steem is stopped)

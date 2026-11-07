@@ -34,6 +34,8 @@ inserted from the disk manager like any image:
   drive=A               ; A (default), B for a PC cable; 0-3 for Shugart
   log=on                ; on (default): Greaseweazle.log next to the file
   density=auto          ; auto (default), off or raw: see FloppyBridgeSmoothSpeeds
+  cache=off             ; off (default) or on: FloppyBridge reads ahead in the
+                        ; background, also while Steem is stopped
   ;config=...           ; or a complete FloppyBridge config string
 
 The bridge runs in "stalling" mode: when the emulated FDC needs a track that
@@ -130,7 +132,7 @@ static bool ContainsText(const char *text,const char *word) {
 
 // descriptor settings
 struct TFloppyBridgeSettings {
-  char driver[64],port[64],drive[16],log[16],density[16];
+  char driver[64],port[64],drive[16],log[16],density[16],cache[16];
   char config[1024];
   TFloppyBridgeSettings() {
     strcpy(driver,"greaseweazle");
@@ -138,6 +140,7 @@ struct TFloppyBridgeSettings {
     strcpy(drive,"A");
     strcpy(log,"on");
     strcpy(density,"auto");
+    strcpy(cache,"off");
     config[0]=0;
   }
 };
@@ -184,6 +187,7 @@ static void ParseDescriptor(const char *text,TFloppyBridgeSettings &s) {
       else if(SameText(key,"config")) { dst=s.config; dst_size=sizeof(s.config); }
       else if(SameText(key,"log")) { dst=s.log; dst_size=sizeof(s.log); }
       else if(SameText(key,"density")) { dst=s.density; dst_size=sizeof(s.density); }
+      else if(SameText(key,"cache")) { dst=s.cache; dst_size=sizeof(s.cache); }
       if(dst)
       {
         strncpy(dst,val,dst_size-1);
@@ -526,8 +530,8 @@ void *FloppyBridgeOpen(const char *descriptor,const char *log_path,
       fprintf(drv->log,"\n---- %s inserted ----\n",when);
     }
   }
-  Log(drv,"Steem FloppyBridge log - driver=%s port=%s drive=%s density=%s%s%s",
-    s.driver,s.port,s.drive,s.density,s.config[0]?" config=":"",s.config);
+  Log(drv,"Steem FloppyBridge log - driver=%s port=%s drive=%s density=%s cache=%s%s%s",
+    s.driver,s.port,s.drive,s.density,s.cache,s.config[0]?" config=":"",s.config);
   if(!FloppyBridgeAPI::isAvailable())
   {
 #ifdef _WIN64
@@ -582,7 +586,14 @@ void *FloppyBridgeOpen(const char *descriptor,const char *log_path,
   api->setBridgeMode(FloppyBridge::BridgeMode::bmStalling);
   api->setBridgeDensityMode(FloppyBridge::BridgeDensityMode::bdmDDOnly);
   api->setSmartSpeedEnabled(false);
-  api->setAutoCacheMode(true);
+/*  FloppyBridge's auto-cache reads the rest of the disk in the background
+    whenever the emulated motor is off - turning the real motor on itself,
+    also while Steem is stopped, before Play. It can only be set before the
+    driver is opened. Off by default: the drive only spins when the ST's
+    does, like a real ST (each new track then costs a revolution or two of
+    real time; the ST doesn't see it). cache=on for faster loading.
+*/
+  api->setAutoCacheMode(SameText(s.cache,"on")||SameText(s.cache,"1"));
   if(!api->initialise())
   {
     SetError(error,error_size,api->getLastErrorMessage());

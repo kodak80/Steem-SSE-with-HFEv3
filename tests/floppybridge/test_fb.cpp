@@ -112,11 +112,13 @@ int main(){
     CHECK(!strcmp(s.driver,"DrawBridge") && !strcmp(s.port,"COM5") && !strcmp(s.drive,"b")
       && !strcmp(s.log,"off") && !strcmp(s.density,"raw"),"descriptor keys"); }
   { TFloppyBridgeSettings s; ParseDescriptor("FLOPPYBRIDGE\nconfig=a;b#c\n",s);
-    CHECK(!strcmp(s.config,"a;b#c") && !strcmp(s.log,"on") && !strcmp(s.density,"auto"),"config kept whole, defaults"); }
+    CHECK(!strcmp(s.config,"a;b#c") && !strcmp(s.log,"on") && !strcmp(s.density,"auto") && !strcmp(s.cache,"off"),"config kept whole, defaults"); }
+  { TFloppyBridgeSettings s; ParseDescriptor("FLOPPYBRIDGE\ncache = on ; faster\n",s);
+    CHECK(!strcmp(s.cache,"on"),"cache=on"); }
   { FILE*f=fopen("../../../extras/Greaseweazle.hfe","rb"); CHECK(f!=NULL,"sample descriptor");
     if(f){ char b[4096]; size_t n=fread(b,1,4095,f); b[n]=0; fclose(f);
       TFloppyBridgeSettings s; ParseDescriptor(b,s);
-      CHECK(!strcmp(s.driver,"greaseweazle") && !strcmp(s.port,"auto") && !strcmp(s.drive,"A"),"sample keys");
+      CHECK(!strcmp(s.driver,"greaseweazle") && !strcmp(s.port,"auto") && !strcmp(s.drive,"A") && !strcmp(s.cache,"off"),"sample keys");
       CHECK(!strncmp(b,"FLOPPYBRIDGE",12),"sample signature"); } }
 
   // no DLL here: open fails cleanly, and the log says why

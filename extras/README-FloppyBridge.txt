@@ -23,7 +23,9 @@ How it works
 ------------
 Each track is read from the drive the first time the ST needs it (Steem
 pauses for a moment, the ST doesn't notice), then kept until the disk is
-removed. FloppyBridge measures how fast each byte goes past the head, and
+removed. Loading takes about as long as on a real ST. With cache=on in
+Greaseweazle.hfe, FloppyBridge reads the whole disk ahead in the background
+so loading is faster, but the drive then also runs while Steem is stopped. FloppyBridge measures how fast each byte goes past the head, and
 Steem uses that like the density of an HFEv3 image, so timing-based
 protections such as Rob Northen Copylock see the real disk's timing.
 
