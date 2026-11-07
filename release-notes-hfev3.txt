@@ -6,6 +6,36 @@ branch (r1511), adding support for HFE v3 floppy images ("HXCHFEV3", as
 written by the HxC Floppy Emulator software and used by FlashFloppy and HxC
 hardware). Source: https://github.com/kodak80/Steem-SSE-with-HFEv3
 
+What's new in HFEv3-4
+- Real floppy drives: a drive connected to a Greaseweazle (or a DrawBridge or
+  SuperCard Pro) can now be used as Steem's drive A: or B:, so you can boot
+  your original disks directly - copy-protected ones included. It uses Rob
+  Smith's FloppyBridge, the same driver as WinUAE and DiskFlashback.
+  Setup:
+  1. Download FloppyBridge from https://amiga.robsmithdev.co.uk/winuae and
+     put FloppyBridge_x64.dll (Steem64) or FloppyBridge.dll (Steem32) next to
+     the Steem exe.
+  2. Close DiskFlashback, or release the drive from it (only one program can
+     use the Greaseweazle at a time).
+  3. Insert Greaseweazle.hfe (included) in A: from the disk manager, like a
+     disk image, and press Play. It's a small text file you can edit: serial
+     port, drive A or B, and a few options. See README-FloppyBridge.txt.
+  How it works: each track is read from the drive when the ST needs it (the
+  emulation pauses for a moment, the ST doesn't notice) and checked sector by
+  sector, re-reading if needed. FloppyBridge measures how fast the data goes
+  past the head, so density-based protections see the real disk's timing:
+  Rob Northen Copylock passes from the original disk (Total Recall's slower
+  sector measured 5.5% slower). The drive only spins while the ST reads it,
+  as on a real ST. A log (Greaseweazle.log, next to Greaseweazle.hfe) shows
+  each track read, its sectors and the measured speeds.
+  Confirmed with: Road Blasters (KIXX), Backlash, Total Recall disks 1 and 2
+  (Copylock), UN Squadron.
+  Limits: read-only (the disk shows as write-protected); to swap the real
+  disk, eject and re-insert Greaseweazle.hfe so the ST sees the change; one
+  revolution is kept per track, so protections relying on weak bits reading
+  differently each time may not pass; Windows only.
+  Disk images are unaffected.
+
 What's new in HFEv3-3
 - ReadySoft-style loaders that read a run of sectors in one go (READ MULTIPLE)
   over a track containing a deliberate bad-CRC sector now work. Steem used to
@@ -55,8 +85,10 @@ Notes
   (Steem.vcxproj, Steem-D3D-Release) with the VS2019 compiler, not with
   VS2008 like the official releases, so it needs Windows 7 or later.
 - Steem64-HFEv3.exe is the 64-bit build, Steem32-HFEv3.exe the 32-bit one.
-- Only Steem itself is included. For optional extras (plugins, DLLs for IPF
-  or archive support, etc.), copy this executable into an existing Steem SSE
-  4.2.1 folder.
+- Only Steem itself is included, plus Greaseweazle.hfe and
+  README-FloppyBridge.txt for real drives (FloppyBridge's DLL is not
+  included: download it as described above). For optional extras
+  (plugins, DLLs for IPF or archive support, etc.), copy this executable
+  into an existing Steem SSE 4.2.1 folder.
 
 Steem SSE is free software, licensed under the GNU GPL v3 (see gpl-3.0.txt).
