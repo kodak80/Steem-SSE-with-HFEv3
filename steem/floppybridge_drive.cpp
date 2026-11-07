@@ -839,6 +839,23 @@ void FloppyBridgeLogMessage(void *handle,const char *msg) {
 }
 
 
+void FloppyBridgeForget(void *handle) {
+  TFloppyBridgeDrive *drv=(TFloppyBridgeDrive*)handle;
+  if(!drv || !drv->api)
+    return;
+  // clears FloppyBridge's track cache and checks for a disk (no seek); the
+  // motor is off at this point anyway
+  drv->api->resetDrive(0);
+  drv->disk_in=drv->api->isDiskInDrive();
+}
+
+
+bool FloppyBridgeWriteProtected(void *handle) {
+  TFloppyBridgeDrive *drv=(TFloppyBridgeDrive*)handle;
+  return drv && drv->api && drv->api->isWriteProtected();
+}
+
+
 int FloppyBridgeReadTrack(void *handle,int side,int track,
   unsigned char *mfm,unsigned short *speed,int max_bytes,unsigned char *weak) {
   TFloppyBridgeDrive *drv=(TFloppyBridgeDrive*)handle;
@@ -1090,6 +1107,38 @@ static bool SameSectors(const TFloppyBridgeCheck &wrote,
   if(missing)
     *missing=miss;
   return !miss && read.ids>=wrote.ids;
+}
+
+
+bool FloppyBridgeSameTrack(const BYTE *a,int abits,const BYTE *b,int bbits) {
+  TFloppyBridgeCheck ca,cb;
+  FloppyBridgeCheckTrack(a,abits,ca);
+  FloppyBridgeCheckTrack(b,bbits,cb);
+  if(!ca.good && !cb.good)
+    return true; // nothing readable on either: can't tell, assume the same
+  if(!ca.good || !cb.good)
+    return false; // data on one only
+  // sectors good on both (same number, same occurrence) must have the same
+  // data, and there must be enough of them (a sector cut by the start of
+  // a revolution may be missing on one)
+  int common=0,differ=0;
+  for(int k=0;k<ca.secs;k++)
+  {
+    if(!ca.sec_good[k])
+      continue;
+    int occ=0;
+    for(int j=0;j<k;j++)
+      if(ca.sec_id[j]==ca.sec_id[k])
+        occ++;
+    int j=FindSector(cb,ca.sec_id[k],occ);
+    if(j<0 || !cb.sec_good[j])
+      continue;
+    common++;
+    if(cb.sec_crc[j]!=ca.sec_crc[k])
+      differ++;
+  }
+  int fewer=(ca.good<cb.good) ? ca.good : cb.good;
+  return !differ && common*2>=fewer;
 }
 
 

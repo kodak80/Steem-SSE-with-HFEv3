@@ -105,6 +105,11 @@ int FloppyBridgeWriteTrack(void*,int side,int track,const unsigned char*mfm,int 
 static WORD WWord(const TMockWrite&w,int i){return (WORD)((w.mfm[i*2]<<8)|w.mfm[i*2+1]);}
 int floppy_mediach[2]={0,0}; std::vector<std::string> g_fb_msgs; std::vector<BYTE> g_fb_weak;
 void FloppyBridgeLogMessage(void*,const char*m){g_fb_msgs.push_back(m);}
+int g_fb_forget=0; bool g_fb_wp=false;
+void FloppyBridgeForget(void*){g_fb_forget++;}
+bool FloppyBridgeWriteProtected(void*){return g_fb_wp;}
+bool FloppyBridgeSameTrack(const unsigned char*a,int na,const unsigned char*b,int nb){
+  int n=(na<nb?na:nb)-16; for(int i=0;i<n;i++) if(((a[i/8]>>(7-i%8))&1)!=((b[i/8]>>(7-i%8))&1)) return false; return true;}
 int FloppyBridgeReadTrack(void*,int side,int track,unsigned char*mfm,unsigned short*speed,int max_bytes,unsigned char*weak){
   g_fb.reads++;
   if(!g_fb.disk_in) return 0; // the real drive gives up: no disk
@@ -375,7 +380,7 @@ int main(){
     // density and logs it); once written it's nominal
     CHECK(im.V3Tracks[3*2+1].Cyc!=NULL,"track 3 side 1 has variable density");
     im.SetImageWord(7,0x4444); // current track: 3 side 1 (variable density)
-    im.BridgeMotorOff();
+    im.BridgeMotorOff(); im.BridgeVerify=false;
     CHECK(g_fb_writes.size()==2 && (g_fb_writes[1].flags&FLOPPYBRIDGE_WRITE_VARIABLE),"variable track flagged");
     CHECK(im.V3Tracks[3*2+1].Data[7]==0x4444 && !im.V3Tracks[3*2+1].Dirty && im.V3Tracks[3*2+1].Cyc==NULL,"written: now nominal");
     g_fdc_cmd=0;
@@ -388,14 +393,14 @@ int main(){
     g_fb.disk_in=true;
     a=ReadTrack(im,0,4,&ok);
     CHECK(ok && g_fb.reads==r0+2 && !im.V3Tracks[4*2].Unread && a.size()==X.size(),"disk back -> read");
-    im.BridgeMotorOff(); CHECK(g_fb_motor_off==2,"motor off passed to the drive");
+    im.BridgeMotorOff(); im.BridgeVerify=false; CHECK(g_fb_motor_off==2,"motor off passed to the drive");
     // read failure: random for now, retried next time
     g_fb.fail_reads=1; r0=g_fb.reads;
     a=ReadTrack(im,0,5,&ok);
     CHECK(ok && im.V3Tracks[5*2].Unread,"failed read -> unformatted");
     // a track we couldn't read, written by WRITE SECTOR: flagged unread
     g_fdc_cmd=2; im.SetImageWord(9,0x5555); size_t nw=g_fb_writes.size();
-    g_fb_write_result=-1; im.BridgeMotorOff(); g_fb_write_result=1; g_fdc_cmd=0;
+    g_fb_write_result=-1; im.BridgeMotorOff(); im.BridgeVerify=false; g_fb_write_result=1; g_fdc_cmd=0;
     CHECK(g_fb_writes.size()==nw+1 && g_fb_writes.back().flags==FLOPPYBRIDGE_WRITE_UNREAD,"unread track flagged (%d)",g_fb_writes.back().flags);
     a=ReadTrack(im,0,5,&ok);
     CHECK(g_fb.reads==r0+2 && !im.V3Tracks[5*2].Unread && a.size()==X.size(),"retried");
@@ -404,7 +409,7 @@ int main(){
     g_fb.fail_reads=1; ReadTrack(im,0,6,&ok);
     CHECK(im.V3Tracks[6*2].Unread,"blank track");
     g_fdc_cmd=3; for(int i=0;i<im.V3Tracks[6*2].nWords;i++) im.SetImageWord((WORD)i,0x9254); g_fdc_cmd=0;
-    size_t nf=g_fb_writes.size(); im.BridgeMotorOff();
+    size_t nf=g_fb_writes.size(); im.BridgeMotorOff(); im.BridgeVerify=false;
     CHECK(g_fb_writes.size()==nf+1 && g_fb_writes.back().flags==(FLOPPYBRIDGE_WRITE_FORMATTED|FLOPPYBRIDGE_WRITE_UNREAD),"formatted track flagged (%d)",g_fb_writes.back().flags);
     r0=g_fb.reads; ReadTrack(im,0,6,&ok);
     CHECK(!im.V3Tracks[6*2].Unread && g_fb.reads==r0 && im.V3Tracks[6*2].Data[100]==0x9254,"written: kept, not re-read");
@@ -416,6 +421,28 @@ int main(){
       CHECK(diff>10 && im.GetImageWord(100)==im.GetImageWord(100),"weak words read differently each time, others don't (%d)",diff); }
     g_fb_weak.clear(); ReadTrack(im,0,9,&ok);
     CHECK(ok && im.V3Tracks[9*2].Weak==NULL,"no weak bits: no Weak");
+    // drive idle (motor off), then the next read checks it's the same disk
+    { g_fb.disk_in=true; ReadTrack(im,0,10,&ok); int f0=g_fb_forget;
+      im.BridgeMotorOff(); CHECK(im.BridgeVerify,"check due after the motor stops");
+      floppy_mediach[0]=0; r0=g_fb.reads;
+      ReadTrack(im,0,10,&ok);
+      CHECK(g_fb_forget==f0+1 && g_fb.reads==r0+1 && floppy_mediach[0]==0 && im.V3Tracks[10*2].Data && !im.BridgeVerify,"same disk: checked once, kept");
+      r0=g_fb.reads; ReadTrack(im,0,10,&ok); CHECK(g_fb.reads==r0,"not checked again while the drive runs");
+      // another disk put in while idle (no disk-change line: disk_in stays true)
+      im.BridgeMotorOff();
+      Bits keep=g_fb.bits; for(size_t i=3000;i<3100;i++) g_fb.bits[i]=!g_fb.bits[i];
+      ReadTrack(im,0,11,&ok); // another track: compared on track 10 (the last one)
+      CHECK(floppy_mediach[0]==FLOPPY_MEDIACH_VBL,"another disk: media change for the ST");
+      CHECK(im.V3Tracks[10*2].Data && im.V3Tracks[10*2].Data[3000/16+1]!=X[3000/16+1],"track 10 is the new disk's");
+      bool msg=false; for(auto&m:g_fb_msgs) if(strstr(m.c_str(),"ANOTHER DISK")) msg=true;
+      CHECK(msg,"logged");
+      g_fb.bits=keep; floppy_mediach[0]=0; }
+    // the write-protect sensor changes (disk going out/in): media change, check due
+    { im.BridgeVerify=false; g_fb_wp=true; for(int v=0;v<8;v++) im.BridgePoll();
+      CHECK(floppy_mediach[0]==FLOPPY_MEDIACH_VBL && im.BridgeVerify,"WP sensor change -> media change + check");
+      g_fb_wp=false; floppy_mediach[0]=0; for(int v=0;v<8;v++) im.BridgePoll();
+      CHECK(floppy_mediach[0]==FLOPPY_MEDIACH_VBL,"and back");
+      im.BridgeVerify=false; floppy_mediach[0]=0; }
     // the real disk swapped: seen at the next poll, the ST gets a media change
     floppy_mediach[0]=0; g_fb.disk_in=false; g_fb_msgs.clear();
     g_fdc_cmd=2; im.SetImageWord(4,0x2222); g_fdc_cmd=0; // a write not saved yet

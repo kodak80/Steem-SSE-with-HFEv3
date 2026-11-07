@@ -86,7 +86,11 @@ struct  TImageHFE:public TImageMfm {
   void BridgeMotorOff(); // the emulated motor stopped
   void BridgePoll(); // every VBL: has the real disk been changed?
   void BridgeDiskChanged(bool disk_in);
+  void BridgeVerifyDisk(BYTE side,BYTE track,THfeV3Track &t);
   int BridgePollCount;
+  bool BridgeVerify; // the drive was idle: check it's still the same disk
+  bool BridgeLastWP; // write-protect sensor at the last poll
+  int BridgeLastSide,BridgeLastTrack; // last track loaded
   // write the tracks the ST changed to the real disk (except keep)
   void BridgeFlush(const THfeV3Track *keep);
   bool BridgeCanWrite(); // write=on and the disk isn't write-protected

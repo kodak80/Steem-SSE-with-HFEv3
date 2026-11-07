@@ -70,10 +70,16 @@ TRY IT ON A COPY OR A BLANK DISK FIRST - never on an original you care about.
 Swapping disks
 --------------
 Just swap the real disk in the drive, like on a real ST (games asking for
-disk 2...). Steem sees the change within a moment and the ST gets a disk
+disk 2...), while the drive is quiet. Steem notices it three ways:
+- the drive's disk-change line (pin 34 of a PC drive), if it has one;
+- the write-protect sensor, which changes as a disk goes in or out (that's
+  how the ST itself sees a disk change);
+- after the drive has been idle, the first read checks the disk: a track
+  Steem already has is read again from the disk and compared.
+Then everything read from the old disk is dropped and the ST gets a disk
 change. Tracks the ST wrote to are saved when its drive motor stops, so wait
-for the drive to go quiet before taking the disk out. (Seen through the
-drive's disk-change line: with a Shugart cable, re-insert Greaseweazle.hfe.)
+for the drive to go quiet before taking the disk out. The log shows "disk
+check: same disk" / "ANOTHER DISK" and the write-protect sensor changes.
 
 Weak bits
 ---------

@@ -799,6 +799,9 @@ bool TImageHFE::OpenBridge(const char *descriptor,const char *path) {
   V3Tracks=(THfeV3Track*)calloc(NUM_TRACKS*2,sizeof(THfeV3Track));
   BridgeDiskIn=FloppyBridgeDiskInDrive(Bridge);
   BridgePollCount=0;
+  BridgeVerify=false;
+  BridgeLastWP=FloppyBridgeWriteProtected(Bridge);
+  BridgeLastSide=BridgeLastTrack=-1;
   TRACE_LOG("FloppyBridge drive open, %d cylinders, disk %s\n",cylinders,
     BridgeDiskIn?"in":"out");
   return V3Tracks!=NULL;
@@ -810,6 +813,7 @@ void TImageHFE::BridgeMotorOff() {
   {
     BridgeFlush(NULL); // the ST has finished: save what it wrote
     FloppyBridgeMotorOff(Bridge);
+    BridgeVerify=true; // the disk may be swapped while the drive is idle
   }
 }
 
@@ -820,16 +824,108 @@ bool TImageHFE::BridgeCanWrite() {
 
 
 void TImageHFE::BridgePoll() {
-/*  Called every VBL (run.cpp). A real disk taken out or put in is seen by
-    FloppyBridge (DSKCHG pin of a PC drive, or its own checks); here it's
-    passed on to the ST, so the disk can be swapped without re-inserting
-    Greaseweazle.hfe. Checked every 8 VBLs, it's only a flag in the DLL.
+/*  Called every VBL (run.cpp). A real disk taken out or put in is passed on
+    to the ST, so the disk can be swapped without re-inserting
+    Greaseweazle.hfe. Checked every 8 VBLs, these are flags in the DLL.
+    - FloppyBridge's disk-in flag, from the drive's disk-change line (pin 34
+      of a PC drive). Without that line it always says "disk in".
+    - The write-protect sensor: it changes as a disk goes in or out, which
+      is also how the ST itself sees a disk change. Then the next read
+      checks the disk (BridgeVerifyDisk).
+    - And after the drive has been idle (motor off), the next read checks
+      the disk too.
 */
   if(!Bridge || (++BridgePollCount&7))
     return;
   bool disk_in=FloppyBridgeDiskInDrive(Bridge);
   if(disk_in!=BridgeDiskIn)
     BridgeDiskChanged(disk_in);
+  bool wp=FloppyBridgeWriteProtected(Bridge);
+  if(wp!=BridgeLastWP)
+  {
+    BridgeLastWP=wp;
+    FloppyBridgeLogMessage(Bridge,wp ? "write-protect sensor on (disk out, or protected)"
+      : "write-protect sensor off (disk in)");
+    BridgeVerify=true;
+    if(Id<2)
+    {
+      floppy_mediach[Id]=FLOPPY_MEDIACH_VBL; // as the ST would see it
+      FloppyDisk[Id].ReadOnly=!BridgeCanWrite();
+      FloppyDisk[Id].WriteProtect=FloppyDisk[Id].ReadOnly;
+    }
+  }
+}
+
+
+void TImageHFE::BridgeVerifyDisk(BYTE side,BYTE track,THfeV3Track &t) {
+/*  The drive was idle (or the write-protect sensor changed): before using
+    what was read, check that it's still the same disk. FloppyBridge's
+    cache is cleared, and a track we have is read again from the disk and
+    compared, sector by sector. Another disk: everything read is dropped
+    and the ST gets a disk change. Costs a revolution at spin-up, which
+    happens then anyway.
+*/
+  BridgeVerify=false;
+  THfeV3Track *ref=NULL;
+  int rs=side,rt=track;
+  if(t.Data && !t.Unread && !t.Dirty)
+    ref=&t;
+  else if(BridgeLastTrack>=0)
+  {
+    THfeV3Track &l=V3Tracks[BridgeLastTrack*2+BridgeLastSide];
+    if(l.Data && !l.Unread && !l.Dirty)
+    {
+      ref=&l;
+      rs=BridgeLastSide;
+      rt=BridgeLastTrack;
+    }
+  }
+  FloppyBridgeForget(Bridge);
+  if(!ref)
+  {
+    // nothing to compare with: don't trust what was read before
+    for(int i=0;i<NUM_TRACKS*2;i++)
+      if(!V3Tracks[i].Dirty)
+        FreeV3TrackData(V3Tracks[i]);
+    return;
+  }
+  const int max_bytes=0xFFFF*2;
+  BYTE *mfm=(BYTE*)malloc(max_bytes);
+  WORD *speed=(WORD*)malloc(max_bytes*sizeof(WORD));
+  BYTE *weak=(BYTE*)malloc(max_bytes);
+  BYTE *old=(BYTE*)malloc(ref->nWords*2);
+  int nbits=(mfm && speed && weak && old)
+    ? FloppyBridgeReadTrack(Bridge,rs,rt,mfm,speed,max_bytes,weak) : 0;
+  if(nbits<16)
+  {
+    // no disk (or unreadable): drop what we have, check again next time
+    FloppyBridgeLogMessage(Bridge,"disk check: no data, the disk may be out");
+    BridgeDiskChanged(BridgeDiskIn);
+    BridgeVerify=true;
+  }
+  else
+  {
+    for(int k=0;k<ref->nWords;k++)
+    {
+      old[k*2]=(BYTE)(ref->Data[k]>>8);
+      old[k*2+1]=(BYTE)(ref->Data[k]&0xFF);
+    }
+    if(!FloppyBridgeSameTrack(old,ref->nWords*16,mfm,nbits))
+    {
+      char msg[120];
+      sprintf(msg,"disk check (track %d side %d): ANOTHER DISK - disk change for the ST",
+        rt,rs);
+      FloppyBridgeLogMessage(Bridge,msg);
+      BridgeDiskChanged(true);
+      BitsToV3Track(mfm,speed,weak,nbits,V3Tracks[rt*2+rs]); // keep the new read
+    }
+    else
+      FloppyBridgeLogMessage(Bridge,"disk check: same disk");
+  }
+  free(mfm);
+  free(speed);
+  free(weak);
+  free(old);
 }
 
 
@@ -915,6 +1011,10 @@ bool TImageHFE::LoadBridgeTrack(BYTE side,BYTE track,THfeV3Track &t) {
   bool disk_in=FloppyBridgeDiskInDrive(Bridge);
   if(disk_in!=BridgeDiskIn)
     BridgeDiskChanged(disk_in); // disk taken out or put in
+  if(BridgeVerify)
+    BridgeVerifyDisk(side,track,t); // same disk as before the drive was idle?
+  BridgeLastSide=side;
+  BridgeLastTrack=track;
   if(t.Data && (t.Dirty || !t.Unread))
     return true; // already read from this disk, or written by the ST
   FreeV3TrackData(t);

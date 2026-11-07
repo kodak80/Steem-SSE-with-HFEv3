@@ -66,6 +66,15 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
   unsigned char *mfm,unsigned short *speed,int max_bytes,unsigned char *weak);
 // a line in the log (from Steem)
 void FloppyBridgeLogMessage(void *handle,const char *msg);
+// Disk swaps. Without a disk-change line (pin 34) FloppyBridge believes a
+// disk is always in, so Steem also checks the disk itself: forget what
+// FloppyBridge has cached (the next read comes from the disk), the state of
+// the write-protect sensor (it changes as a disk goes in or out), and
+// whether two reads of a track are the same disk (same sector IDs and data).
+void FloppyBridgeForget(void *handle);
+bool FloppyBridgeWriteProtected(void *handle);
+bool FloppyBridgeSameTrack(const unsigned char *a,int abits,
+  const unsigned char *b,int bbits);
 
 // What the ST would find on a revolution (for the log, and to decide on a
 // re-read): sector IDs with a good CRC, data fields with a good/bad CRC.

@@ -165,6 +165,18 @@ int main(){
     CHECK(mg.repaired==0 && mg.weak_sectors==0 && !anyw,"stable bad sector: no repair, no weak bits");
   }
 
+  // same disk or another one?
+  { auto normal=[](int s,int i){return (i*7+s)&0xFF;};
+    auto other=[](int s,int i){return (i*5+s*3)&0xFF;};
+    Mfm a1=GenTrack(normal),a2=GenTrack(normal,0,1234),b1=GenTrack(other),c1=GenTrack([](int s,int i){return (s==4&&i==10)?0x99:((i*7+s)&0xFF);});
+    auto va=a1.Pack(),va2=a2.Pack(),vb=b1.Pack(),vc=c1.Pack();
+    int na=(int)a1.bits.size();
+    CHECK(FloppyBridgeSameTrack(&va[0],na,&va2[0],(int)a2.bits.size()),"same track read at another rotation: same disk");
+    CHECK(!FloppyBridgeSameTrack(&va[0],na,&vb[0],(int)b1.bits.size()),"other data: another disk");
+    CHECK(!FloppyBridgeSameTrack(&va[0],na,&vc[0],(int)c1.bits.size()),"one byte different: another disk");
+    std::vector<BYTE> u(12500); for(auto&x:u) x=(BYTE)rand();
+    CHECK(FloppyBridgeSameTrack(&u[0],100000,&u[0],100000),"nothing readable: assumed the same"); }
+
   // speed smoothing
   const int N=12500;
   std::vector<WORD> sp(N);
