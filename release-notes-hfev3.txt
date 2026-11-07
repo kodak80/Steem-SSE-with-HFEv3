@@ -6,6 +6,21 @@ branch (r1511), adding support for HFE v3 floppy images ("HXCHFEV3", as
 written by the HxC Floppy Emulator software and used by FlashFloppy and HxC
 hardware). Source: https://github.com/kodak80/Steem-SSE-with-HFEv3
 
+What's new in HFEv3-7
+- Fuzzy bits from real disks (Greaseweazle / FloppyBridge): Dungeon Master
+  originals now pass their protection - the gate out of the Hall of
+  Champions opens. Its sector 7 holds 489 bytes written so that each reads
+  $68 or $E8, and the game checks both that only those values come back and
+  that two reads differ. The drive's electronics show only a byte or two of
+  them changing, so Steem now makes only the bit cells that change random
+  (a byte keeps the values it can really take) and applies them to the
+  whole run of identical bytes around them.
+- More reliable re-reads: when a sector is bad, Steem now waits for
+  genuinely new revolutions of the disk (up to 4) instead of sometimes
+  getting the same one twice.
+  Confirmed: Dungeon Master (original), Total Recall disks 1 and 2
+  (Copylock still passes).
+
 What's new in HFEv3-6
 - Swapping real disks (Greaseweazle / FloppyBridge). Just change the disk
   in the drive while it's quiet, like on a real ST - no need to eject and
