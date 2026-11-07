@@ -994,6 +994,49 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
   Log(drv,"track %2d side %d: %d bits, %d ms, %d rev, speed %d-%d%s | %s",
     track,side,best_bits,ElapsedMs(start),revs,mn,mx,
     density?" VARIABLE":"",info);
+  // diagnostics for protections: the revolutions read, and the timing of
+  // each byte of a sector that's bad every time and reads the same each
+  // time (a deliberate CRC error - or fuzzy bits the PLL resolves the same
+  // way every time, as for Dungeon Master's sector 7?)
+  if(revs>1 && best_check.bad)
+  {
+    char lens[80];
+    int n=0;
+    for(int r=0;r<revs && n<70;r++)
+      n+=snprintf(lens+n,sizeof(lens)-n,"%s%d",r?"/":"",rev_len[r]);
+    Log(drv,"          revolutions read: %s bits",lens);
+    for(int k=0;k<best_check.secs;k++)
+    {
+      if(best_check.sec_good[k])
+        continue;
+      int b0=best_check.sec_start[k]/8,b1=best_check.sec_end[k]/8;
+      if(b1>(best_bits+7)/8)
+        b1=(best_bits+7)/8;
+      if(b1<=b0)
+        continue;
+      bool weak_here=false;
+      for(int i=b0;i<b1 && weak && !weak_here;i++)
+        weak_here=(weak[i]!=0);
+      if(weak_here)
+        continue;
+      std::vector<int> v(best_raw.begin()+b0,best_raw.begin()+b1);
+      std::sort(v.begin(),v.end());
+      int med=v[v.size()/2];
+      if(med<=0)
+        continue;
+      int over5=0,over10=0,over20=0,maxdev=0;
+      for(int i=b0;i<b1;i++)
+      {
+        int d=abs((int)best_raw[i]-med)*1000/med;
+        if(d>50) over5++;
+        if(d>100) over10++;
+        if(d>200) over20++;
+        if(d>maxdev) maxdev=d;
+      }
+      Log(drv,"          sector %d: bad CRC, same every revolution; byte timing median %d, MFM bytes >5%%/10%%/20%% off: %d/%d/%d of %d, max %d.%d%%",
+        best_check.sec_id[k],med,over5,over10,over20,b1-b0,maxdev/10,maxdev%10);
+    }
+  }
   if(merge.repaired || merge.weak_sectors)
   {
     char rep[200]="",wk[200]="";

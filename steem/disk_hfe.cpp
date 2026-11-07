@@ -845,8 +845,8 @@ void TImageHFE::BridgePoll() {
   if(wp!=BridgeLastWP)
   {
     BridgeLastWP=wp;
-    FloppyBridgeLogMessage(Bridge,wp ? "write-protect sensor on (disk out, or protected)"
-      : "write-protect sensor off (disk in)");
+    // (FloppyBridge clears it when there's no disk, so it's not "disk out")
+    FloppyBridgeLogMessage(Bridge,wp ? "write-protect on" : "write-protect off");
     BridgeVerify=true;
     if(Id<2)
     {
