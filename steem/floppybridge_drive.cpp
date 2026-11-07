@@ -652,6 +652,84 @@ void FloppyBridgeMergeRevolutions(BYTE *base,int nbits,
 }
 
 
+/*  Fuzzy bits by timing. A fuzzy area (Dungeon Master's sector 7) is
+    written with flux transitions half way between two bit cells: the
+    drive's PLL decides one way or the other, and FloppyBridge's PLL may
+    decide the same way on every revolution, so comparing revolutions finds
+    little (1 byte of DM's sector). But the time measured for those bytes is
+    off by 10-25% (a 5us gap read as 4 or 6us), while an ordinary sector,
+    even a slower Copylock one, is even to a few %. So in a sector with a bad
+    CRC, the data bytes more than 10% off the sector's median are weak - if
+    there are enough of them (8) to be a fuzzy area rather than one glitch.
+*/
+int FloppyBridgeTimingWeak(const TFloppyBridgeCheck &c,const unsigned short *speed,
+  int nbytes,int nbits,unsigned char *weak,int *weak_bytes,
+  unsigned char *list,int *stats) {
+  int sectors=0,total=0;
+  for(int k=0;k<c.secs;k++)
+  {
+    if(stats)
+      stats[k*4]=stats[k*4+1]=stats[k*4+2]=stats[k*4+3]=0;
+    if(c.sec_good[k])
+      continue;
+    // one value per data byte (16 cells = 2 MFM bytes)
+    std::vector<int> v;
+    std::vector<int> pos;
+    for(int p=c.sec_start[k];p+16<=c.sec_end[k] && p+16<=nbits;p+=16)
+    {
+      int b=p/8;
+      if(b+1>=nbytes)
+        break;
+      // a byte that isn't aligned on the speed bytes spans 3 of them
+      int sum=speed[b]+speed[b+1],n=2;
+      if((p&7) && b+2<nbytes)
+      {
+        sum+=speed[b+2];
+        n++;
+      }
+      v.push_back(sum/n);
+      pos.push_back(p);
+    }
+    if(v.size()<16)
+      continue;
+    std::vector<int> sorted(v);
+    std::sort(sorted.begin(),sorted.end());
+    int med=sorted[sorted.size()/2];
+    if(med<=0)
+      continue;
+    int off=0,maxdev=0;
+    for(size_t i=0;i<v.size();i++)
+    {
+      int d=abs(v[i]-med)*1000/med;
+      if(d>100)
+        off++;
+      if(d>maxdev)
+        maxdev=d;
+    }
+    if(stats)
+    {
+      stats[k*4]=med;
+      stats[k*4+1]=off;
+      stats[k*4+2]=(int)v.size();
+      stats[k*4+3]=maxdev;
+    }
+    if(off<8 || !weak)
+      continue;
+    for(size_t i=0;i<v.size();i++)
+      if(abs(v[i]-med)*1000/med>100)
+        for(int j=0;j<16;j++)
+          SetMfmBit(weak,pos[i]+j,1);
+    if(list && sectors<FLOPPYBRIDGE_CHECK_MAX)
+      list[sectors]=c.sec_id[k];
+    sectors++;
+    total+=off;
+  }
+  if(weak_bytes)
+    *weak_bytes=total;
+  return sectors;
+}
+
+
 /////////////
 // the drive
 /////////////
@@ -872,9 +950,14 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
 /*  In stalling mode getMFMTrack waits up to 450ms for the revolution, but
     returns 0 at once while the motor spins up or the disk isn't detected.
     So we wait on the clock, up to 5s (motor, seek, a few revolutions).
-    If the revolution has bad sectors, up to 2 more are read; the best one
+    If the revolution has bad sectors, up to 3 more are read; the best one
     is kept, and the others repair it or show its weak bits (see
     FloppyBridgeMergeRevolutions).
+    FloppyBridge reads the next revolution in the background, from the
+    index: it can take 2 turns (400ms). mfmSwitchBuffer before it's ready
+    gives the previous buffer again (UN Squadron: 96201/96201/96212 bits),
+    so we wait 450ms, and a revolution identical to the one before (same
+    length, same bits) is taken as stale and the switch tried again.
 */
   std::vector<BYTE> tmp(max_bytes);
   std::vector<WORD> tmp_speed(max_bytes);
@@ -885,18 +968,24 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
   std::vector<WORD> best_raw; // speeds before smoothing, for the log
   TFloppyBridgeCheck best_check;
   memset(&best_check,0,sizeof(best_check));
-  while(revs<3 && ElapsedMs(start)<5000)
+  int stale=0;
+  while(revs<4 && ElapsedMs(start)<6000)
   {
     if(revs)
     {
-      // next revolution: FloppyBridge keeps reading the track in the
-      // background; after one revolution (200ms) the next buffer is ready
-      // (isMFMDataAvailable() is always true in stalling mode, no use here)
-      FbSleep(220);
+      // next revolution (isMFMDataAvailable() is always true in stalling
+      // mode, no use here)
+      FbSleep(450);
       api->mfmSwitchBuffer(upper);
     }
     int bits=api->getMFMTrack(upper,(unsigned int)track,false,max_bytes,
       &tmp[0]);
+    if(bits>0 && revs && bits==rev_len[revs-1] && stale<2
+      && !memcmp(&tmp[0],&rev_data[revs-1][0],(bits+7)/8))
+    {
+      stale++; // the same buffer again: wait for a new one
+      continue;
+    }
     if(bits<=0)
     {
       // no disk: give up at once if the motor was already running (the
@@ -982,8 +1071,16 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
     if(merge.repaired)
       FloppyBridgeCheckTrack(mfm,best_bits,best_check);
   }
-  int mn,mx;
   best_raw.assign(speed,speed+(best_bits+7)/8);
+  // fuzzy bits the revolutions didn't show: by timing
+  int timing_stats[FLOPPYBRIDGE_CHECK_MAX*4];
+  unsigned char timing_list[FLOPPYBRIDGE_CHECK_MAX];
+  int timing_bytes=0,timing_sectors=0;
+  if(best_check.bad)
+    timing_sectors=FloppyBridgeTimingWeak(best_check,&best_raw[0],
+      (int)best_raw.size(),best_bits,weak,&timing_bytes,timing_list,
+      timing_stats);
+  int mn,mx;
   FloppyBridgeSmoothSpeeds(speed,(best_bits+7)/8,drv->density,&mn,&mx,
     &best_check);
   char info[300];
@@ -998,44 +1095,33 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
   // each byte of a sector that's bad every time and reads the same each
   // time (a deliberate CRC error - or fuzzy bits the PLL resolves the same
   // way every time, as for Dungeon Master's sector 7?)
-  if(revs>1 && best_check.bad)
+  if(best_check.bad)
   {
     char lens[80];
     int n=0;
     for(int r=0;r<revs && n<70;r++)
       n+=snprintf(lens+n,sizeof(lens)-n,"%s%d",r?"/":"",rev_len[r]);
-    Log(drv,"          revolutions read: %s bits",lens);
+    Log(drv,"          revolutions read: %s bits%s",lens,
+      stale?" (waited for fresh ones)":"");
     for(int k=0;k<best_check.secs;k++)
     {
-      if(best_check.sec_good[k])
+      if(best_check.sec_good[k] || !timing_stats[k*4+2])
         continue;
-      int b0=best_check.sec_start[k]/8,b1=best_check.sec_end[k]/8;
-      if(b1>(best_bits+7)/8)
-        b1=(best_bits+7)/8;
-      if(b1<=b0)
-        continue;
-      bool weak_here=false;
-      for(int i=b0;i<b1 && weak && !weak_here;i++)
-        weak_here=(weak[i]!=0);
-      if(weak_here)
-        continue;
-      std::vector<int> v(best_raw.begin()+b0,best_raw.begin()+b1);
-      std::sort(v.begin(),v.end());
-      int med=v[v.size()/2];
-      if(med<=0)
-        continue;
-      int over5=0,over10=0,over20=0,maxdev=0;
-      for(int i=b0;i<b1;i++)
-      {
-        int d=abs((int)best_raw[i]-med)*1000/med;
-        if(d>50) over5++;
-        if(d>100) over10++;
-        if(d>200) over20++;
-        if(d>maxdev) maxdev=d;
-      }
-      Log(drv,"          sector %d: bad CRC, same every revolution; byte timing median %d, MFM bytes >5%%/10%%/20%% off: %d/%d/%d of %d, max %d.%d%%",
-        best_check.sec_id[k],med,over5,over10,over20,b1-b0,maxdev/10,maxdev%10);
+      int d=timing_stats[k*4+3];
+      Log(drv,"          sector %d: bad CRC; data byte timing median %d, %d of %d bytes >10%% off (max %d.%d%%)%s",
+        best_check.sec_id[k],timing_stats[k*4],timing_stats[k*4+1],
+        timing_stats[k*4+2],d/10,d%10,
+        timing_stats[k*4+1]>=8?" -> fuzzy":"");
     }
+  }
+  if(timing_sectors)
+  {
+    char wk[200]="";
+    int n=0;
+    for(int k=0;k<timing_sectors && k<FLOPPYBRIDGE_CHECK_MAX && n<150;k++)
+      n+=snprintf(wk+n,sizeof(wk)-n," %d",timing_list[k]);
+    Log(drv,"          WEAK BITS (fuzzy timing): sector%s%s, %d bytes",
+      timing_sectors>1?"s":"",wk,timing_bytes);
   }
   if(merge.repaired || merge.weak_sectors)
   {

@@ -91,6 +91,12 @@ reads them, as on the real disk (protections such as the FTL "fuzzy bits"
 of Dungeon Master check this). A sector that's bad but always the same (a
 deliberate CRC error, as in Copylock) is left as it is. The log shows
 "repaired from another revolution" and "WEAK BITS" lines.
+The drive's electronics can read a fuzzy area the same way every time, so
+Steem also looks at the timing: fuzzy bits are written between two bit
+cells, and those bytes take 10-25% more or less time than the rest of the
+sector. In a sector with a bad CRC, 8 or more such bytes are taken as weak
+bits ("WEAK BITS (fuzzy timing)" in the log). A Copylock sector is slower
+as a whole, evenly, so it isn't affected.
 
 Limits
 ------

@@ -165,6 +165,37 @@ int main(){
     CHECK(mg.repaired==0 && mg.weak_sectors==0 && !anyw,"stable bad sector: no repair, no weak bits");
   }
 
+  // fuzzy bits by timing: a stable bad sector whose fuzzy bytes read 10-25% off
+  { auto normal=[](int s,int i){return (i*7+s)&0xFF;};
+    Mfm t=GenTrack(normal,7); auto v=t.Pack(); int nb=(int)t.bits.size(),nbytes=(nb+7)/8;
+    TFloppyBridgeCheck c; FloppyBridgeCheckTrack(&v[0],nb,c);
+    int k7=FindSector(c,7,0),st=c.sec_start[k7];
+    std::vector<WORD> sp(nbytes);
+    for(int i=0;i<nbytes;i++) sp[i]=(WORD)(1000+((i*37)%41)-20); // +-2% jitter
+    // data bytes 200-259 of sector 7: alternately 20% fast/slow
+    for(int i=200;i<260;i++){ int b=(st+i*16)/8; WORD x=(i&1)?1200:820; sp[b]=sp[b+1]=x; if(b+2<nbytes && ((st+i*16)&7)) sp[b+2]=x; }
+    std::vector<BYTE> wk(v.size(),0); int bytes=0,stats[FLOPPYBRIDGE_CHECK_MAX*4]; BYTE list[FLOPPYBRIDGE_CHECK_MAX];
+    int n=FloppyBridgeTimingWeak(c,&sp[0],nbytes,nb,&wk[0],&bytes,list,stats);
+    CHECK(n==1 && list[0]==7 && bytes>=55 && bytes<=62,"fuzzy timing: sector 7 (%d sectors, %d bytes)",n,bytes);
+    CHECK(MfmBit(&wk[0],st+230*16+5) && !MfmBit(&wk[0],st+100*16+5) && !MfmBit(&wk[0],st+400*16+5),"fuzzy timing: only the odd bytes are weak");
+    // Copylock-like: the whole bad sector 5% slower, even: nothing
+    for(int i=0;i<nbytes;i++) sp[i]=(WORD)(1000+((i*37)%41)-20);
+    for(int p=c.sec_start[k7]/8;p<c.sec_end[k7]/8+2;p++) sp[p]=(WORD)(sp[p]+50);
+    std::fill(wk.begin(),wk.end(),0);
+    n=FloppyBridgeTimingWeak(c,&sp[0],nbytes,nb,&wk[0],&bytes,list,stats);
+    bool anyw=false; for(auto x:wk) if(x) anyw=true;
+    CHECK(n==0 && !anyw && stats[k7*4+1]==0,"slow even sector (Copylock): no weak bits");
+    // a few odd bytes only: a glitch, not fuzzy
+    for(int i=300;i<305;i++){ int b=(st+i*16)/8; sp[b]=sp[b+1]=1300; }
+    n=FloppyBridgeTimingWeak(c,&sp[0],nbytes,nb,&wk[0],&bytes,list,stats);
+    CHECK(n==0 && stats[k7*4+1]>=4 && stats[k7*4+1]<8,"5 odd bytes: not fuzzy (%d)",stats[k7*4+1]);
+    // good sectors are never marked
+    Mfm g=GenTrack(normal); auto vg=g.Pack(); TFloppyBridgeCheck cg; FloppyBridgeCheckTrack(&vg[0],(int)g.bits.size(),cg);
+    for(int i=0;i<nbytes;i++) sp[i]=(i&1)?1300:800;
+    n=FloppyBridgeTimingWeak(cg,&sp[0],nbytes,(int)g.bits.size(),&wk[0],&bytes,list,stats);
+    CHECK(n==0,"good sectors: no timing weak bits");
+  }
+
   // same disk or another one?
   { auto normal=[](int s,int i){return (i*7+s)&0xFF;};
     auto other=[](int s,int i){return (i*5+s*3)&0xFF;};
