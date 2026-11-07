@@ -93,8 +93,10 @@ void *FloppyBridgeOpen(const char*descriptor,const char*log_path,char*error,int 
 void FloppyBridgeClose(void*h){if(h==&g_fb_handle)g_fb.closes++;}
 int FloppyBridgeMaxCylinder(void*){return g_fb.max_cyl;}
 bool FloppyBridgeDiskInDrive(void*){return g_fb.disk_in;}
+int g_fb_motor_off=0; void FloppyBridgeMotorOff(void*){g_fb_motor_off++;}
 int FloppyBridgeReadTrack(void*,int side,int track,unsigned char*mfm,unsigned short*speed,int max_bytes){
   g_fb.reads++;
+  if(!g_fb.disk_in) return 0; // the real drive gives up: no disk
   if(g_fb.fail_reads>0){g_fb.fail_reads--;return 0;}
   int n=(int)g_fb.bits.size(); if(n>max_bytes*8) n=max_bytes*8;
   memset(mfm,0,(n+7)/8);
@@ -351,12 +353,13 @@ int main(){
     // disk removed: random bits, the cache is dropped
     g_fb.disk_in=false; r0=g_fb.reads;
     a=ReadTrack(im,0,4,&ok);
-    CHECK(ok && g_fb.reads==r0 && a.size()==6256 && im.V3Tracks[4*2].Unread,"no disk -> unformatted, not read");
+    CHECK(ok && g_fb.reads==r0+1 && a.size()==6256 && im.V3Tracks[4*2].Unread,"no disk -> drive asked, unformatted");
     CHECK(im.V3Tracks[3*2+1].Data==NULL,"cache dropped when the disk goes");
     // disk back: read again
     g_fb.disk_in=true;
     a=ReadTrack(im,0,4,&ok);
-    CHECK(ok && g_fb.reads==r0+1 && !im.V3Tracks[4*2].Unread && a.size()==X.size(),"disk back -> read");
+    CHECK(ok && g_fb.reads==r0+2 && !im.V3Tracks[4*2].Unread && a.size()==X.size(),"disk back -> read");
+    im.BridgeMotorOff(); CHECK(g_fb_motor_off==1,"motor off passed to the drive");
     // read failure: random for now, retried next time
     g_fb.fail_reads=1; r0=g_fb.reads;
     a=ReadTrack(im,0,5,&ok);

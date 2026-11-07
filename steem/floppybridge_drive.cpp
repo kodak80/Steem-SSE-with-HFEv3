@@ -592,17 +592,12 @@ void *FloppyBridgeOpen(const char *descriptor,const char *log_path,
     return NULL;
   }
   drv->api=api;
-  Log(drv,"connected, %d cylinders",(int)api->getMaxCylinder());
-  api->resetDrive(0);
-  api->setMotorStatus(false,true);
-  // the motor spins up and FloppyBridge detects the disk in the background;
-  // wait for that so the first read (the boot sector) finds the drive ready
-  int ms=0;
-  for(;ms<4000 && !(api->isMotorRunning() && api->isDiskInDrive());ms+=20)
-    FbSleep(20);
+  // The motor stays off until the ST reads the disk (it used to be turned
+  // on here, and FloppyBridge then read the disk while Steem was stopped).
+  api->setMotorStatus(false,false);
   drv->disk_in=api->isDiskInDrive();
-  Log(drv,"motor %s, disk %s after %d ms",api->isMotorRunning()?"on":"off",
-    drv->disk_in?"in":"NOT detected",ms);
+  Log(drv,"connected, %d cylinders, motor off until the ST reads",
+    (int)api->getMaxCylinder());
   return drv;
 }
 
@@ -621,6 +616,15 @@ void FloppyBridgeClose(void *handle) {
   if(drv->log)
     fclose(drv->log);
   delete drv;
+}
+
+
+void FloppyBridgeMotorOff(void *handle) {
+  TFloppyBridgeDrive *drv=(TFloppyBridgeDrive*)handle;
+  if(!drv || !drv->api || !drv->api->isMotorRunning())
+    return;
+  drv->api->setMotorStatus(false,false);
+  Log(drv,"motor off");
 }
 
 
@@ -673,6 +677,9 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
   FloppyBridgeAPI *api=drv->api;
   bool upper=(side!=0); // ST side 1 = upper head (head 1)
   TFbClock::time_point start=TFbClock::now();
+  bool was_running=api->isMotorRunning();
+  if(!was_running)
+    Log(drv,"motor on");
   api->setMotorStatus(upper,true);
   api->gotoCylinder(track,upper);
 /*  In stalling mode getMFMTrack waits up to 450ms for the revolution, but
@@ -700,6 +707,10 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
       &tmp[0]);
     if(bits<=0)
     {
+      // no disk: give up at once if the motor was already running (the
+      // disk would have been detected), else after the spin-up
+      if(!api->isDiskInDrive() && (was_running || ElapsedMs(start)>2500))
+        break;
       FbSleep(10);
       continue;
     }

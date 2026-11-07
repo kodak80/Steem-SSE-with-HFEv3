@@ -82,6 +82,7 @@ struct  TImageHFE:public TImageMfm {
   // The drive is read-only for now.
   bool OpenBridge(const char *descriptor,const char *path);
   bool LoadBridgeTrack(BYTE side,BYTE track,THfeV3Track &t);
+  void BridgeMotorOff(); // the emulated motor stopped
   void *Bridge; // FloppyBridgeOpen() handle, NULL for an image file
   picfileformatheader BridgeHeader; // stands in for the file header
   bool BridgeDiskIn;

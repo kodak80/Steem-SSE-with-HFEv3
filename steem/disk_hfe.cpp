@@ -788,6 +788,12 @@ bool TImageHFE::OpenBridge(const char *descriptor,const char *path) {
 }
 
 
+void TImageHFE::BridgeMotorOff() {
+  if(Bridge)
+    FloppyBridgeMotorOff(Bridge);
+}
+
+
 bool TImageHFE::LoadBridgeTrack(BYTE side,BYTE track,THfeV3Track &t) {
   bool disk_in=FloppyBridgeDiskInDrive(Bridge);
   if(disk_in!=BridgeDiskIn)
@@ -801,7 +807,8 @@ bool TImageHFE::LoadBridgeTrack(BYTE side,BYTE track,THfeV3Track &t) {
   if(t.Data && !t.Unread)
     return true; // already read from this disk
   FreeV3TrackData(t);
-  if(disk_in)
+  // with the motor off FloppyBridge may not know yet that a disk is in:
+  // always ask the drive (it gives up quickly if there's really none)
   {
     const int max_bytes=0xFFFF*2; // as much as a track can hold
     BYTE *mfm=(BYTE*)malloc(max_bytes);

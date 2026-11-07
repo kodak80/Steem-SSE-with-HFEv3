@@ -1051,6 +1051,11 @@ void agenda_fdc_motor_flag_off(int) {
   Fdc.str&=~FDC_STR_MO;
   TRACE_LOG("FDC1 Drive %c: motor off\n",'A'+floppyno);
   drive.bMotor=false;
+#if defined(SSE_FLOPPYBRIDGE)
+  // a real drive (Greaseweazle...) stops with the emulated one
+  for(int d=0;d<2;d++)
+    ImageHFE[d].BridgeMotorOff();
+#endif
 }
 
 

@@ -53,6 +53,9 @@ void FloppyBridgeClose(void *handle);
 // Number of cylinders the drive can reach (eg 80, 82, 84).
 int FloppyBridgeMaxCylinder(void *handle);
 bool FloppyBridgeDiskInDrive(void *handle);
+// The real motor follows the emulated one: FloppyBridgeReadTrack turns it
+// on, Steem turns it off when the ST's FDC does (or emulation stops).
+void FloppyBridgeMotorOff(void *handle);
 // Read one revolution of side/track (side 0 = lower head) starting at the
 // index pulse, MFM bits first bit = MSB of mfm[0]. speed[i] is the time taken
 // by byte i, FLOPPYBRIDGE_SPEED_NOMINAL = nominal. Returns the number of bits

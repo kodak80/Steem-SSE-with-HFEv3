@@ -16,7 +16,8 @@ Setup
 3. Copy Greaseweazle.hfe (included) to your disks folder. It is a small text
    file, not an image: edit it if needed (port, drive A or B).
 4. In Steem's disk manager, insert Greaseweazle.hfe in A: like a disk image.
-   The drive motor starts and Steem reads the real disk.
+   Nothing happens until the ST reads the disk (press Play): the real
+   motor turns on and off with the emulated one.
 
 How it works
 ------------

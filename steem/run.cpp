@@ -409,6 +409,11 @@ void run() {
   bRunMessagePosted=false;
 #endif
   runstate=RUNSTATE_STOPPED;
+#if defined(SSE_FLOPPYBRIDGE)
+  // a real drive doesn't keep spinning while Steem is stopped
+  for(int d=0;d<2;d++)
+    ImageHFE[d].BridgeMotorOff();
+#endif
   REFRESH_STATUS_BAR;
 #if defined(SSE_420R5)
   UPDATE_STATUS_BAR_PART(SB_PART_MAIN);
