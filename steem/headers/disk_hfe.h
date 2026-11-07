@@ -73,8 +73,8 @@ struct  TImageHFE:public TImageMfm {
   void FreeV3Tracks();
   void FreeV3TrackData(THfeV3Track &t);
   static bool MakeUnformattedTrack(THfeV3Track &t);
-  static bool BitsToV3Track(const BYTE *mfm,const WORD *speed,int nbits,
-    THfeV3Track &t);
+  static bool BitsToV3Track(const BYTE *mfm,const WORD *speed,
+    const BYTE *weak,int nbits,THfeV3Track &t);
 #if defined(SSE_FLOPPYBRIDGE)
   // Bridge mode: a descriptor file (text starting with "FLOPPYBRIDGE") opens
   // a real drive on a Greaseweazle etc. through FloppyBridge instead of an
@@ -84,6 +84,9 @@ struct  TImageHFE:public TImageMfm {
   bool OpenBridge(const char *descriptor,const char *path);
   bool LoadBridgeTrack(BYTE side,BYTE track,THfeV3Track &t);
   void BridgeMotorOff(); // the emulated motor stopped
+  void BridgePoll(); // every VBL: has the real disk been changed?
+  void BridgeDiskChanged(bool disk_in);
+  int BridgePollCount;
   // write the tracks the ST changed to the real disk (except keep)
   void BridgeFlush(const THfeV3Track *keep);
   bool BridgeCanWrite(); // write=on and the disk isn't write-protected

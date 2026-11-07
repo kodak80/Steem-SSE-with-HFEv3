@@ -36,6 +36,27 @@ static Mfm StTrack(int track,int side,int corrupt=0,int lead_bits=0){
   return m;
 }
 
+// a 9-sector track whose data comes from gen(sector,index); bad_crc: sector
+// whose CRC is wrong; slip_at: sector 7 byte where one extra cell is inserted
+#include <functional>
+static Mfm GenTrack(std::function<int(int,int)> gen,int bad_crc=0,int rotate=0,int slip_at=-1){
+  Mfm m; m.Fill(0x4E,60);
+  for(int s=1;s<=9;s++){
+    m.Fill(0,12); m.Sync();m.Sync();m.Sync();
+    std::vector<int> id={0xA1,0xA1,0xA1,0xFE,0,0,s,2};
+    WORD c=Crc(id); for(int k=3;k<8;k++) m.Byte(id[k]); m.Byte(c>>8); m.Byte(c&0xFF);
+    m.Fill(0x4E,22); m.Fill(0,12); m.Sync();m.Sync();m.Sync();
+    std::vector<int> d={0xA1,0xA1,0xA1,0xFB}; for(int i=0;i<512;i++) d.push_back(gen(s,i)&0xFF);
+    c=Crc(d); if(s==bad_crc) c^=0x55;
+    for(size_t k=3;k<d.size();k++){ m.Byte(d[k]); if(s==7 && slip_at>=0 && (int)k-4==slip_at) m.bits.push_back(0); }
+    m.Byte(c>>8); m.Byte(c&0xFF);
+    m.Fill(0x4E,40);
+  }
+  while(m.bits.size()<100000) m.Byte(0x4E);
+  if(rotate){ std::vector<int> r(m.bits.size()); for(size_t i=0;i<r.size();i++) r[i]=m.bits[(i+rotate)%r.size()]; m.bits=r; }
+  return m;
+}
+
 int main(){
   // sector check
   { Mfm m=StTrack(3,1); auto v=m.Pack(); TFloppyBridgeCheck c;
@@ -105,6 +126,44 @@ int main(){
   // descriptor: write=
   { TFloppyBridgeSettings s; ParseDescriptor("FLOPPYBRIDGE\nwrite=on\n",s); CHECK(!strcmp(s.write,"on"),"write=on");
     TFloppyBridgeSettings t; ParseDescriptor("FLOPPYBRIDGE\n",t); CHECK(!strcmp(t.write,"off"),"write off by default"); }
+
+  // several revolutions: repair, weak bits, stable bad sectors
+  { auto normal=[](int s,int i){return (i*7+s)&0xFF;};
+    // sector 5 bad on the base revolution only: repaired from another
+    Mfm b1=GenTrack(normal,5),o1=GenTrack(normal,0,777);
+    auto vb=b1.Pack(),vo=o1.Pack(); const BYTE*oth[1]={&vo[0]}; int ob[1]={(int)o1.bits.size()};
+    std::vector<BYTE> wk(vb.size(),0); TFloppyBridgeMerge mg;
+    FloppyBridgeMergeRevolutions(&vb[0],(int)b1.bits.size(),oth,ob,1,&wk[0],mg);
+    TFloppyBridgeCheck c; FloppyBridgeCheckTrack(&vb[0],(int)b1.bits.size(),c);
+    CHECK(mg.repaired==1 && mg.repaired_list[0]==5 && c.good==9 && c.bad==0 && mg.weak_sectors==0,"bad sector repaired from another revolution (%d %d)",mg.repaired,c.good);
+    // sector 7 bytes 100-163 read differently on each revolution (fuzzy bits), CRC bad every time
+    auto fz=[](unsigned seed){ return [seed](int s,int i){ if(s==7 && i>=100 && i<164) return (int)((i*2654435761u+seed*40503u)>>13)&0xFF; return (i*7+s)&0xFF; }; };
+    Mfm f1=GenTrack(fz(1),7),f2=GenTrack(fz(2),7,333),f3=GenTrack(fz(3),7);
+    auto v1=f1.Pack(),v2=f2.Pack(),v3=f3.Pack(); const BYTE*o2[2]={&v2[0],&v3[0]}; int b2[2]={(int)f2.bits.size(),(int)f3.bits.size()};
+    TFloppyBridgeCheck c1; FloppyBridgeCheckTrack(&v1[0],(int)f1.bits.size(),c1);
+    CHECK(c1.bad==1 && c1.bad_list[0]==7,"fuzzy sector has a bad CRC");
+    std::fill(wk.begin(),wk.end(),0); wk.resize(v1.size(),0);
+    FloppyBridgeMergeRevolutions(&v1[0],(int)f1.bits.size(),o2,b2,2,&wk[0],mg);
+    CHECK(mg.repaired==0 && mg.weak_sectors==1 && mg.weak_list[0]==7 && mg.weak_bytes>=55 && mg.weak_bytes<=70,"weak bytes found in sector 7 (%d)",mg.weak_bytes);
+    int k7=FindSector(c1,7,0); int st=c1.sec_start[k7];
+    CHECK(MfmBit(&wk[0],st+120*16+3) && !MfmBit(&wk[0],st+50*16+3) && !MfmBit(&wk[0],st+300*16+3),"only the fuzzy bytes are weak");
+    int k6=FindSector(c1,6,0); bool other_weak=false;
+    for(int i=c1.sec_start[k6];i<c1.sec_end[k6];i++) if(MfmBit(&wk[0],i)) other_weak=true;
+    CHECK(!other_weak,"good sectors have no weak bits");
+    // a cell more in the fuzzy area on one revolution: resynced, the rest of the sector isn't weak
+    Mfm s1=GenTrack(fz(1),7),s2=GenTrack(fz(2),7,0,130);
+    auto w1=s1.Pack(),w2=s2.Pack(); const BYTE*o3[1]={&w2[0]}; int b3[1]={(int)s2.bits.size()};
+    std::fill(wk.begin(),wk.end(),0);
+    FloppyBridgeMergeRevolutions(&w1[0],(int)s1.bits.size(),o3,b3,1,&wk[0],mg);
+    CHECK(mg.weak_sectors==1 && mg.weak_bytes<=80,"slip resynced (%d weak bytes)",mg.weak_bytes);
+    // a deliberate CRC error (same every revolution, eg Copylock): left alone
+    Mfm d1=GenTrack(normal,6),d2=GenTrack(normal,6,500);
+    auto x1=d1.Pack(),x2=d2.Pack(); const BYTE*o4[1]={&x2[0]}; int b4[1]={(int)d2.bits.size()};
+    std::fill(wk.begin(),wk.end(),0);
+    FloppyBridgeMergeRevolutions(&x1[0],(int)d1.bits.size(),o4,b4,1,&wk[0],mg);
+    bool anyw=false; for(auto x:wk) if(x) anyw=true;
+    CHECK(mg.repaired==0 && mg.weak_sectors==0 && !anyw,"stable bad sector: no repair, no weak bits");
+  }
 
   // speed smoothing
   const int N=12500;

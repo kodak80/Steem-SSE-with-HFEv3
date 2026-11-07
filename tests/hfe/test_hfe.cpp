@@ -85,7 +85,7 @@ struct TMockBridge {
   Bits bits;            // one revolution, first bit first
   std::vector<WORD> speed; // per byte, 1000 = nominal
 } g_fb={true,true,81,0,0,0,0};
-static int g_fb_handle; static std::string g_fb_log;
+static int g_fb_handle; bool g_fb_canwrite=true; static std::string g_fb_log;
 void *FloppyBridgeOpen(const char*descriptor,const char*log_path,char*error,int error_size){ g_fb_log=log_path?log_path:"";
   g_fb.opens++;
   if(!g_fb.open_ok){snprintf(error,error_size,"mock: no Greaseweazle");return NULL;}
@@ -98,12 +98,14 @@ int g_fb_motor_off=0; void FloppyBridgeMotorOff(void*){g_fb_motor_off++;}
 int g_fdc_cmd=0;
 struct TMockWrite { int side,track,nbits,flags; std::vector<BYTE> mfm; };
 std::vector<TMockWrite> g_fb_writes; int g_fb_write_result=1;
-bool FloppyBridgeCanWrite(void*){return true;}
+bool FloppyBridgeCanWrite(void*){return g_fb_canwrite;}
 int FloppyBridgeWriteTrack(void*,int side,int track,const unsigned char*mfm,int nbits,int flags){
   TMockWrite w; w.side=side; w.track=track; w.nbits=nbits; w.flags=flags; w.mfm.assign(mfm,mfm+(nbits+7)/8);
   g_fb_writes.push_back(w); return g_fb_write_result;}
 static WORD WWord(const TMockWrite&w,int i){return (WORD)((w.mfm[i*2]<<8)|w.mfm[i*2+1]);}
-int FloppyBridgeReadTrack(void*,int side,int track,unsigned char*mfm,unsigned short*speed,int max_bytes){
+int floppy_mediach[2]={0,0}; std::vector<std::string> g_fb_msgs; std::vector<BYTE> g_fb_weak;
+void FloppyBridgeLogMessage(void*,const char*m){g_fb_msgs.push_back(m);}
+int FloppyBridgeReadTrack(void*,int side,int track,unsigned char*mfm,unsigned short*speed,int max_bytes,unsigned char*weak){
   g_fb.reads++;
   if(!g_fb.disk_in) return 0; // the real drive gives up: no disk
   if(g_fb.fail_reads>0){g_fb.fail_reads--;return 0;}
@@ -111,6 +113,7 @@ int FloppyBridgeReadTrack(void*,int side,int track,unsigned char*mfm,unsigned sh
   memset(mfm,0,(n+7)/8);
   for(int i=0;i<n;i++) if(g_fb.bits[i]) mfm[i/8]|=(unsigned char)(0x80>>(i%8));
   for(int i=0;i<(n+7)/8;i++) speed[i]=i<(int)g_fb.speed.size()?g_fb.speed[i]:1000;
+  if(weak){memset(weak,0,(n+7)/8); for(size_t i=0;i<g_fb_weak.size()&&i<(size_t)(n+7)/8;i++) weak[i]=g_fb_weak[i];}
   (void)side;(void)track;
   return n;}
 
@@ -405,6 +408,29 @@ int main(){
     CHECK(g_fb_writes.size()==nf+1 && g_fb_writes.back().flags==(FLOPPYBRIDGE_WRITE_FORMATTED|FLOPPYBRIDGE_WRITE_UNREAD),"formatted track flagged (%d)",g_fb_writes.back().flags);
     r0=g_fb.reads; ReadTrack(im,0,6,&ok);
     CHECK(!im.V3Tracks[6*2].Unread && g_fb.reads==r0 && im.V3Tracks[6*2].Data[100]==0x9254,"written: kept, not re-read");
+    // weak bits from the drive become the track's weak bits
+    g_fb_weak.assign(2000,0); for(int i=1600;i<1664;i++) g_fb_weak[i]=0xFF; // bytes 1600-1663 = words 800-831
+    ReadTrack(im,0,8,&ok);
+    CHECK(ok && im.V3Tracks[8*2].Weak && im.V3Tracks[8*2].Weak[800]==0xFFFF && im.V3Tracks[8*2].Weak[799]==0 && im.V3Tracks[8*2].Weak[832]==0,"weak bits kept");
+    { int diff=0; for(int k=0;k<20;k++){ WORD a1=im.GetImageWord(810),a2=im.GetImageWord(810); if(a1!=a2) diff++; }
+      CHECK(diff>10 && im.GetImageWord(100)==im.GetImageWord(100),"weak words read differently each time, others don't (%d)",diff); }
+    g_fb_weak.clear(); ReadTrack(im,0,9,&ok);
+    CHECK(ok && im.V3Tracks[9*2].Weak==NULL,"no weak bits: no Weak");
+    // the real disk swapped: seen at the next poll, the ST gets a media change
+    floppy_mediach[0]=0; g_fb.disk_in=false; g_fb_msgs.clear();
+    g_fdc_cmd=2; im.SetImageWord(4,0x2222); g_fdc_cmd=0; // a write not saved yet
+    for(int v=0;v<8;v++) im.BridgePoll();
+    CHECK(floppy_mediach[0]==FLOPPY_MEDIACH_VBL && !im.BridgeDiskIn,"disk out -> media change");
+    CHECK(im.V3Tracks[8*2].Data==NULL && im.V3Tracks[9*2].Data==NULL,"tracks of the old disk dropped");
+    CHECK(g_fb_msgs.size()==1 && strstr(g_fb_msgs[0].c_str(),"1 track"),"unsaved write logged");
+    floppy_mediach[0]=0; g_fb.disk_in=true; g_fb_canwrite=false;
+    for(int v=0;v<7;v++) im.BridgePoll();
+    CHECK(floppy_mediach[0]==0,"polled every 8 VBLs");
+    im.BridgePoll();
+    CHECK(floppy_mediach[0]==FLOPPY_MEDIACH_VBL && im.BridgeDiskIn && FloppyDisk[0].ReadOnly && FloppyDisk[0].WriteProtect,"new disk -> media change, its write-protect tab");
+    g_fb_canwrite=true; floppy_mediach[0]=0;
+    r0=g_fb.reads; ReadTrack(im,0,9,&ok);
+    CHECK(ok && g_fb.reads==r0+1,"new disk read from the drive");
     // eject: what isn't saved yet is written
     g_fdc_cmd=2; ReadTrack(im,0,7,&ok); im.SetImageWord(3,0x1111); g_fdc_cmd=0;
     size_t ne=g_fb_writes.size();

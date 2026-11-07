@@ -1,5 +1,7 @@
 #pragma once
-struct TFloppyDisk { WORD TrackBytes; BYTE current_side,current_track; bool WrittenTo,ReadOnly; WORD current_byte; };
+struct TFloppyDisk { WORD TrackBytes; BYTE current_side,current_track; bool WrittenTo,ReadOnly,WriteProtect; WORD current_byte; };
+extern int floppy_mediach[2];
+#define FLOPPY_MEDIACH_VBL 30
 extern TFloppyDisk FloppyDisk[3];
 struct TImageMfm {
   TImageMfm(){Id=0;fCurrentImage=NULL;Position=0;LowLevel=false;}

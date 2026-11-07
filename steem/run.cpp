@@ -1039,6 +1039,11 @@ void event_vbl_interrupt() {
     floppy_mediach[DRIVE_A]--;  //counter for media change
   if(floppy_mediach[DRIVE_B]) 
     floppy_mediach[DRIVE_B]--;  //counter for media change
+#if defined(SSE_FLOPPYBRIDGE)
+  // a real drive: the disk may have been swapped (sets floppy_mediach)
+  ImageHFE[DRIVE_A].BridgePoll();
+  ImageHFE[DRIVE_B].BridgePoll();
+#endif
 #ifdef SHOW_DRAW_SPEED
   {
     HDC dc=GetDC(StemWin);

@@ -58,10 +58,14 @@ bool FloppyBridgeDiskInDrive(void *handle);
 void FloppyBridgeMotorOff(void *handle);
 // Read one revolution of side/track (side 0 = lower head) starting at the
 // index pulse, MFM bits first bit = MSB of mfm[0]. speed[i] is the time taken
-// by byte i, FLOPPYBRIDGE_SPEED_NOMINAL = nominal. Returns the number of bits
-// in the revolution, 0 if no data could be read (no disk, timeout...).
+// by byte i, FLOPPYBRIDGE_SPEED_NOMINAL = nominal. weak (may be NULL), same
+// layout as mfm: bits that read differently from one revolution to the next
+// (weak bits protection). Returns the number of bits in the revolution, 0 if
+// no data could be read (no disk, timeout...).
 int FloppyBridgeReadTrack(void *handle,int side,int track,
-  unsigned char *mfm,unsigned short *speed,int max_bytes);
+  unsigned char *mfm,unsigned short *speed,int max_bytes,unsigned char *weak);
+// a line in the log (from Steem)
+void FloppyBridgeLogMessage(void *handle,const char *msg);
 
 // What the ST would find on a revolution (for the log, and to decide on a
 // re-read): sector IDs with a good CRC, data fields with a good/bad CRC.
@@ -110,6 +114,19 @@ int FloppyBridgeWriteTrack(void *handle,int side,int track,
 // 0 if out_size is too small.
 int FloppyBridgePrepareWrite(const unsigned char *mfm,int nbits,int rev_bits,
   unsigned char *out,int out_size,int *gap_bits,int *rotate_bits);
+// Bad sectors of a revolution, compared with other revolutions of the track:
+// a sector read correctly on another revolution is copied from it (a weak
+// read); a sector bad on every revolution that reads differently each time
+// has weak bits: the bytes that differ are marked in weak. One that reads
+// the same every time (a deliberate CRC error, eg Copylock) is left alone.
+struct TFloppyBridgeMerge {
+  int repaired,weak_sectors,weak_bytes;
+  unsigned char repaired_list[FLOPPYBRIDGE_CHECK_MAX];
+  unsigned char weak_list[FLOPPYBRIDGE_CHECK_MAX];
+};
+void FloppyBridgeMergeRevolutions(unsigned char *base,int nbits,
+  const unsigned char *const *others,const int *others_bits,int nothers,
+  unsigned char *weak,TFloppyBridgeMerge &m);
 // smooth/normalise per-byte speeds (1000 = nominal) as density= says; in
 // auto mode c (the sectors found on the track) decides, see the .cpp
 void FloppyBridgeSmoothSpeeds(unsigned short *speed,int nbytes,int mode,

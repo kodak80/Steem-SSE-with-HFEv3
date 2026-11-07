@@ -681,8 +681,8 @@ bool TImageHFE::MakeUnformattedTrack(THfeV3Track &t) {
 }
 
 
-bool TImageHFE::BitsToV3Track(const BYTE *mfm,const WORD *speed,int nbits,
-  THfeV3Track &t) {
+bool TImageHFE::BitsToV3Track(const BYTE *mfm,const WORD *speed,
+  const BYTE *weak,int nbits,THfeV3Track &t) {
 /*  Store one revolution read from a real drive (bridge mode) as a decoded v3
     track. The bits are already cells (FloppyBridge's PLL did that) and start
     at the index, like a decoded v3 track. speed[] is the measured time of
@@ -690,6 +690,9 @@ bool TImageHFE::BitsToV3Track(const BYTE *mfm,const WORD *speed,int nbits,
     (256 = nominal) so the density-aware reader and the byte pacing see the
     disk's real timing, as for a v3 image with BITRATE opcodes. When every
     byte reads at exactly nominal speed Cyc stays NULL (nominal path).
+    weak[] marks bits that read differently on each revolution: they become
+    the track's weak bits (random each time they're read, as for a v3 image
+    with RAND opcodes); Weak stays NULL if there are none.
 */
   t.Data=t.Weak=t.Cyc=NULL;
   t.nWords=0;
@@ -738,6 +741,18 @@ bool TImageHFE::BitsToV3Track(const BYTE *mfm,const WORD *speed,int nbits,
     if(t.Cyc)
       t.Cyc[i]=c;
   }
+  if(weak)
+  {
+    for(int i=0;i<nbits;i++)
+      if((weak[i/8]>>(7-i%8))&1)
+      {
+        if(!t.Weak)
+          t.Weak=(WORD*)calloc(t.nWords,sizeof(WORD));
+        if(!t.Weak)
+          break;
+        t.Weak[i/16]|=(WORD)(1<<(15-i%16));
+      }
+  }
   return true;
 }
 
@@ -783,6 +798,7 @@ bool TImageHFE::OpenBridge(const char *descriptor,const char *path) {
   SavePath[0]=0;
   V3Tracks=(THfeV3Track*)calloc(NUM_TRACKS*2,sizeof(THfeV3Track));
   BridgeDiskIn=FloppyBridgeDiskInDrive(Bridge);
+  BridgePollCount=0;
   TRACE_LOG("FloppyBridge drive open, %d cylinders, disk %s\n",cylinders,
     BridgeDiskIn?"in":"out");
   return V3Tracks!=NULL;
@@ -800,6 +816,53 @@ void TImageHFE::BridgeMotorOff() {
 
 bool TImageHFE::BridgeCanWrite() {
   return Bridge && FloppyBridgeCanWrite(Bridge);
+}
+
+
+void TImageHFE::BridgePoll() {
+/*  Called every VBL (run.cpp). A real disk taken out or put in is seen by
+    FloppyBridge (DSKCHG pin of a PC drive, or its own checks); here it's
+    passed on to the ST, so the disk can be swapped without re-inserting
+    Greaseweazle.hfe. Checked every 8 VBLs, it's only a flag in the DLL.
+*/
+  if(!Bridge || (++BridgePollCount&7))
+    return;
+  bool disk_in=FloppyBridgeDiskInDrive(Bridge);
+  if(disk_in!=BridgeDiskIn)
+    BridgeDiskChanged(disk_in);
+}
+
+
+void TImageHFE::BridgeDiskChanged(bool disk_in) {
+  // what was read belongs to the other disk; tracks the ST wrote to that
+  // weren't saved yet are lost (the disk is gone)
+  int lost=0;
+  for(int i=0;i<NUM_TRACKS*2;i++)
+  {
+    if(V3Tracks[i].Dirty)
+      lost++;
+    FreeV3TrackData(V3Tracks[i]);
+  }
+  if(lost)
+  {
+    char msg[160];
+    sprintf(msg,"disk removed before %d track(s) written by the ST could be saved: they're lost",
+      lost);
+    FloppyBridgeLogMessage(Bridge,msg);
+  }
+  BridgeDiskIn=disk_in;
+  TRACE_LOG("FloppyBridge disk %s\n",disk_in?"inserted":"removed");
+  if(Id<2)
+  {
+    // the ST sees a disk change as the write-protect signal changing while
+    // the disk passes the sensor: same as inserting a disk in Steem
+    floppy_mediach[Id]=FLOPPY_MEDIACH_VBL;
+    if(disk_in)
+    { // this disk may have its write-protect tab in another position
+      FloppyDisk[Id].ReadOnly=!BridgeCanWrite();
+      FloppyDisk[Id].WriteProtect=FloppyDisk[Id].ReadOnly;
+    }
+  }
 }
 
 
@@ -851,14 +914,7 @@ bool TImageHFE::LoadBridgeTrack(BYTE side,BYTE track,THfeV3Track &t) {
   BridgeFlush(&t);
   bool disk_in=FloppyBridgeDiskInDrive(Bridge);
   if(disk_in!=BridgeDiskIn)
-  {
-    // disk taken out or put in: what was read belongs to another disk
-    // (tracks written and not saved yet are lost: the disk is gone)
-    TRACE_LOG("FloppyBridge disk %s\n",disk_in?"inserted":"removed");
-    for(int i=0;i<NUM_TRACKS*2;i++)
-      FreeV3TrackData(V3Tracks[i]);
-    BridgeDiskIn=disk_in;
-  }
+    BridgeDiskChanged(disk_in); // disk taken out or put in
   if(t.Data && (t.Dirty || !t.Unread))
     return true; // already read from this disk, or written by the ST
   FreeV3TrackData(t);
@@ -868,13 +924,15 @@ bool TImageHFE::LoadBridgeTrack(BYTE side,BYTE track,THfeV3Track &t) {
     const int max_bytes=0xFFFF*2; // as much as a track can hold
     BYTE *mfm=(BYTE*)malloc(max_bytes);
     WORD *speed=(WORD*)malloc(max_bytes*sizeof(WORD));
-    int nbits=(mfm && speed)
-      ? FloppyBridgeReadTrack(Bridge,side,track,mfm,speed,max_bytes) : 0;
-    bool ok=(nbits>=16 && BitsToV3Track(mfm,speed,nbits,t));
+    BYTE *weak=(BYTE*)malloc(max_bytes);
+    int nbits=(mfm && speed && weak)
+      ? FloppyBridgeReadTrack(Bridge,side,track,mfm,speed,max_bytes,weak) : 0;
+    bool ok=(nbits>=16 && BitsToV3Track(mfm,speed,weak,nbits,t));
     free(mfm);
     free(speed);
-    TRACE_LOG("FloppyBridge read side %d track %d: %d bits%s\n",side,track,
-      nbits,(ok && t.Cyc)?", variable density":"");
+    free(weak);
+    TRACE_LOG("FloppyBridge read side %d track %d: %d bits%s%s\n",side,track,
+      nbits,(ok && t.Cyc)?", variable density":"",(ok && t.Weak)?", weak bits":"");
     if(ok)
       return true;
   }

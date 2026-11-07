@@ -67,10 +67,25 @@ TRY IT ON A COPY OR A BLANK DISK FIRST - never on an original you care about.
     in Steem (re-insert Greaseweazle.hfe after moving the tab).
 - Steem pauses while a track is written and checked (about a second).
 
+Swapping disks
+--------------
+Just swap the real disk in the drive, like on a real ST (games asking for
+disk 2...). Steem sees the change within a moment and the ST gets a disk
+change. Tracks the ST wrote to are saved when its drive motor stops, so wait
+for the drive to go quiet before taking the disk out. (Seen through the
+drive's disk-change line: with a Shugart cable, re-insert Greaseweazle.hfe.)
+
+Weak bits
+---------
+When a sector has a bad CRC, a few more revolutions are read. If the sector
+reads correctly on one of them, that copy is used (a weak read). If it's
+bad every time and its data changes from one revolution to the next, the
+bytes that change are weak bits: they read differently each time the ST
+reads them, as on the real disk (protections such as the FTL "fuzzy bits"
+of Dungeon Master check this). A sector that's bad but always the same (a
+deliberate CRC error, as in Copylock) is left as it is. The log shows
+"repaired from another revolution" and "WEAK BITS" lines.
+
 Limits
 ------
-- Swapping the real disk: eject and re-insert Greaseweazle.hfe in Steem so
-  the ST sees a disk change. Tracks written by the ST are saved before.
-- One revolution per track is kept, so protections that need weak bits to
-  read differently each time may not pass yet.
 - Windows only.

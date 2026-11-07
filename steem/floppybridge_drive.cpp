@@ -245,6 +245,14 @@ static inline int MfmBit(const BYTE *mfm,int i) {
 }
 
 
+static inline void SetMfmBit(BYTE *mfm,int i,int b) {
+  if(b)
+    mfm[i>>3]|=(BYTE)(0x80>>(i&7));
+  else
+    mfm[i>>3]&=(BYTE)~(0x80>>(i&7));
+}
+
+
 // data byte of the 16 cells starting at bit pos (clock, data, clock...)
 static int MfmByte(const BYTE *mfm,int nbits,int pos) {
   if(pos<0 || pos+16>nbits)
@@ -515,6 +523,135 @@ void FloppyBridgeSmoothSpeeds(WORD *speed,int nbytes,int mode,
 }
 
 
+/////////////////////////////////////
+// several revolutions of a track
+/////////////////////////////////////
+
+// mark in weak the 16-cell groups (MFM bytes, from pa) where a and b differ;
+// b's position follows a's, resynced after a slip (a fuzzy area can give a
+// cell more or less)
+static void MarkDifferences(const BYTE *a,int abits,int pa,const BYTE *b,
+  int bbits,int pb,int n,BYTE *weak) {
+  int off=0;
+  for(int g=0;g+16<=n;g+=16)
+  {
+    if(pa+g+16>abits)
+      break;
+    int diff=0;
+    for(int k=0;k<16;k++)
+    {
+      int ib=pb+off+g+k;
+      if(ib<0 || ib>=bbits || MfmBit(a,pa+g+k)!=MfmBit(b,ib))
+        diff++;
+    }
+    if(!diff)
+      continue;
+    for(int k=0;k<16;k++)
+      SetMfmBit(weak,pa+g+k,1);
+    if(diff>4)
+    {
+      // slipped? keep the shift that matches the next 64 cells best
+      int best=off,best_diff=1000;
+      for(int d=-4;d<=4;d++)
+      {
+        int dd=0;
+        for(int k=16;k<80;k++)
+        {
+          int ia=pa+g+k,ib=pb+off+d+g+k;
+          if(ia>=abits)
+            break;
+          if(ib<0 || ib>=bbits || MfmBit(a,ia)!=MfmBit(b,ib))
+            dd++;
+        }
+        if(dd<best_diff)
+        {
+          best_diff=dd;
+          best=off+d;
+        }
+      }
+      // only a clear match: inside the fuzzy area every shift looks random
+      if(best_diff<=6)
+        off=best;
+    }
+  }
+}
+
+
+// index in c of the occ'th sector numbered id, -1 if none
+static int FindSector(const TFloppyBridgeCheck &c,int id,int occ) {
+  for(int j=0;j<c.secs;j++)
+    if(c.sec_id[j]==id && !occ--)
+      return j;
+  return -1;
+}
+
+
+void FloppyBridgeMergeRevolutions(BYTE *base,int nbits,
+  const BYTE *const *others,const int *others_bits,int nothers,BYTE *weak,
+  TFloppyBridgeMerge &m) {
+  memset(&m,0,sizeof(m));
+  if(!base || nothers<=0)
+    return;
+  TFloppyBridgeCheck cb;
+  FloppyBridgeCheckTrack(base,nbits,cb);
+  if(!cb.bad)
+    return;
+  std::vector<TFloppyBridgeCheck> co(nothers);
+  for(int r=0;r<nothers;r++)
+    FloppyBridgeCheckTrack(others[r],others_bits[r],co[r]);
+  for(int k=0;k<cb.secs;k++)
+  {
+    if(cb.sec_good[k])
+      continue;
+    int occ=0;
+    for(int j=0;j<k;j++)
+      if(cb.sec_id[j]==cb.sec_id[k])
+        occ++;
+    int len=cb.sec_end[k]-cb.sec_start[k]+32; // data + CRC
+    // read correctly on another revolution: take it from there
+    bool fixed=false;
+    for(int r=0;r<nothers && !fixed;r++)
+    {
+      int j=FindSector(co[r],cb.sec_id[k],occ);
+      if(j<0 || !co[r].sec_good[j]
+        || co[r].sec_end[j]-co[r].sec_start[j]!=cb.sec_end[k]-cb.sec_start[k])
+        continue;
+      for(int i=0;i<len && cb.sec_start[k]+i<nbits;i++)
+        SetMfmBit(base,cb.sec_start[k]+i,MfmBit(others[r],co[r].sec_start[j]+i));
+      fixed=true;
+    }
+    if(fixed)
+    {
+      if(m.repaired<FLOPPYBRIDGE_CHECK_MAX)
+        m.repaired_list[m.repaired]=cb.sec_id[k];
+      m.repaired++;
+      continue;
+    }
+    // bad every time: weak bits where the revolutions differ
+    if(!weak)
+      continue;
+    for(int r=0;r<nothers;r++)
+    {
+      int j=FindSector(co[r],cb.sec_id[k],occ);
+      if(j>=0)
+        MarkDifferences(base,nbits,cb.sec_start[k],others[r],others_bits[r],
+          co[r].sec_start[j],len,weak);
+    }
+    int bytes=0;
+    for(int g=0;g<len;g+=16)
+      if(cb.sec_start[k]+g<nbits && MfmBit(weak,cb.sec_start[k]+g))
+        bytes++;
+    if(bytes)
+    {
+      if(m.weak_sectors<FLOPPYBRIDGE_CHECK_MAX)
+        m.weak_list[m.weak_sectors]=cb.sec_id[k];
+      m.weak_sectors++;
+      m.weak_bytes+=bytes;
+    }
+  }
+}
+
+
 /////////////
 // the drive
 /////////////
@@ -697,8 +834,13 @@ static void FormatCheck(const TFloppyBridgeCheck &c,char *out,size_t size) {
 }
 
 
+void FloppyBridgeLogMessage(void *handle,const char *msg) {
+  Log((TFloppyBridgeDrive*)handle,"%s",msg ? msg : "");
+}
+
+
 int FloppyBridgeReadTrack(void *handle,int side,int track,
-  unsigned char *mfm,unsigned short *speed,int max_bytes) {
+  unsigned char *mfm,unsigned short *speed,int max_bytes,unsigned char *weak) {
   TFloppyBridgeDrive *drv=(TFloppyBridgeDrive*)handle;
   if(!drv || !drv->api || !mfm || !speed || max_bytes<=0)
     return 0;
@@ -713,11 +855,15 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
 /*  In stalling mode getMFMTrack waits up to 450ms for the revolution, but
     returns 0 at once while the motor spins up or the disk isn't detected.
     So we wait on the clock, up to 5s (motor, seek, a few revolutions).
-    If the revolution has bad sectors, up to 2 more are read and the best
-    one is kept: a real FDC would retry too.
+    If the revolution has bad sectors, up to 2 more are read; the best one
+    is kept, and the others repair it or show its weak bits (see
+    FloppyBridgeMergeRevolutions).
 */
   std::vector<BYTE> tmp(max_bytes);
   std::vector<WORD> tmp_speed(max_bytes);
+  std::vector< std::vector<BYTE> > rev_data; // every revolution read
+  std::vector<int> rev_len;
+  int best_rev=-1;
   int best_bits=0,best_score=-1,revs=0;
   std::vector<WORD> best_raw; // speeds before smoothing, for the log
   TFloppyBridgeCheck best_check;
@@ -746,6 +892,8 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
     if(bits>max_bytes*8)
       bits=max_bytes*8;
     revs++;
+    rev_data.push_back(std::vector<BYTE>(tmp.begin(),tmp.begin()+(bits+7)/8));
+    rev_len.push_back(bits);
     TFloppyBridgeCheck c;
     FloppyBridgeCheckTrack(&tmp[0],bits,c);
 /*  getMFMSpeed returns "garbage" until FloppyBridge is ready, and on the
@@ -780,6 +928,7 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
     {
       best_score=score;
       best_bits=bits;
+      best_rev=revs-1;
       best_check=c;
       memcpy(mfm,&tmp[0],nbytes);
       memcpy(speed,&tmp_speed[0],nbytes*sizeof(WORD));
@@ -796,6 +945,26 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
     return 0;
   }
   drv->rev_bits=best_bits;
+  // other revolutions: repair bad sectors, find weak bits
+  TFloppyBridgeMerge merge;
+  memset(&merge,0,sizeof(merge));
+  if(weak)
+    memset(weak,0,(best_bits+7)/8);
+  if(revs>1 && best_check.bad)
+  {
+    std::vector<const BYTE*> others;
+    std::vector<int> others_bits;
+    for(int r=0;r<revs;r++)
+      if(r!=best_rev)
+      {
+        others.push_back(&rev_data[r][0]);
+        others_bits.push_back(rev_len[r]);
+      }
+    FloppyBridgeMergeRevolutions(mfm,best_bits,&others[0],&others_bits[0],
+      (int)others.size(),weak,merge);
+    if(merge.repaired)
+      FloppyBridgeCheckTrack(mfm,best_bits,best_check);
+  }
   int mn,mx;
   best_raw.assign(speed,speed+(best_bits+7)/8);
   FloppyBridgeSmoothSpeeds(speed,(best_bits+7)/8,drv->density,&mn,&mx,
@@ -808,6 +977,22 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
   Log(drv,"track %2d side %d: %d bits, %d ms, %d rev, speed %d-%d%s | %s",
     track,side,best_bits,ElapsedMs(start),revs,mn,mx,
     density?" VARIABLE":"",info);
+  if(merge.repaired || merge.weak_sectors)
+  {
+    char rep[200]="",wk[200]="";
+    int n=0;
+    for(int k=0;k<merge.repaired && k<FLOPPYBRIDGE_CHECK_MAX && n<150;k++)
+      n+=snprintf(rep+n,sizeof(rep)-n," %d",merge.repaired_list[k]);
+    n=0;
+    for(int k=0;k<merge.weak_sectors && k<FLOPPYBRIDGE_CHECK_MAX && n<150;k++)
+      n+=snprintf(wk+n,sizeof(wk)-n," %d",merge.weak_list[k]);
+    if(merge.repaired)
+      Log(drv,"          repaired from another revolution: sector%s%s",
+        merge.repaired>1?"s":"",rep);
+    if(merge.weak_sectors)
+      Log(drv,"          WEAK BITS (read differently each time): sector%s%s, %d bytes",
+        merge.weak_sectors>1?"s":"",wk,merge.weak_bytes);
+  }
   // where a protection would be: speed of each sector
   if(density || track==0)
   {
@@ -822,14 +1007,6 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
 ///////////
 // writing
 ///////////
-
-static inline void SetMfmBit(BYTE *mfm,int i,int b) {
-  if(b)
-    mfm[i>>3]|=(BYTE)(0x80>>(i&7));
-  else
-    mfm[i>>3]&=(BYTE)~(0x80>>(i&7));
-}
-
 
 int FloppyBridgePrepareWrite(const BYTE *mfm,int nbits,int rev_bits,
   BYTE *out,int out_size,int *gap_bits,int *rotate_bits) {
