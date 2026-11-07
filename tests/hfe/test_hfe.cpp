@@ -448,6 +448,7 @@ int main(){
     g_fdc_cmd=2; im.SetImageWord(4,0x2222); g_fdc_cmd=0; // a write not saved yet
     for(int v=0;v<8;v++) im.BridgePoll();
     CHECK(floppy_mediach[0]==FLOPPY_MEDIACH_VBL && !im.BridgeDiskIn,"disk out -> media change");
+    CHECK(FloppyDisk[0].WriteProtect,"no disk: write-protect sensor on");
     CHECK(im.V3Tracks[8*2].Data==NULL && im.V3Tracks[9*2].Data==NULL,"tracks of the old disk dropped");
     CHECK(g_fb_msgs.size()==1 && strstr(g_fb_msgs[0].c_str(),"1 track"),"unsaved write logged");
     floppy_mediach[0]=0; g_fb.disk_in=true; g_fb_canwrite=false;
@@ -458,6 +459,8 @@ int main(){
     g_fb_canwrite=true; floppy_mediach[0]=0;
     r0=g_fb.reads; ReadTrack(im,0,9,&ok);
     CHECK(ok && g_fb.reads==r0+1,"new disk read from the drive");
+    { bool traced=false; for(auto&m:g_fb_msgs) if(strstr(m.c_str(),"ST reads track 9 side 0")) traced=true;
+      CHECK(traced,"what the ST reads after a disk change is logged"); }
     // eject: what isn't saved yet is written
     g_fdc_cmd=2; ReadTrack(im,0,7,&ok); im.SetImageWord(3,0x1111); g_fdc_cmd=0;
     size_t ne=g_fb_writes.size();

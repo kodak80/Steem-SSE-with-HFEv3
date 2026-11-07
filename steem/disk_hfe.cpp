@@ -802,6 +802,7 @@ bool TImageHFE::OpenBridge(const char *descriptor,const char *path) {
   BridgeVerify=false;
   BridgeLastWP=FloppyBridgeWriteProtected(Bridge);
   BridgeLastSide=BridgeLastTrack=-1;
+  BridgeTraceLoads=0;
   TRACE_LOG("FloppyBridge drive open, %d cylinders, disk %s\n",cylinders,
     BridgeDiskIn?"in":"out");
   return V3Tracks!=NULL;
@@ -947,6 +948,8 @@ void TImageHFE::BridgeDiskChanged(bool disk_in) {
     FloppyBridgeLogMessage(Bridge,msg);
   }
   BridgeDiskIn=disk_in;
+  BridgeTraceLoads=40; // log what the ST does next (cached reads too)
+  BridgeLastSide=BridgeLastTrack=-1;
   TRACE_LOG("FloppyBridge disk %s\n",disk_in?"inserted":"removed");
   if(Id<2)
   {
@@ -958,6 +961,8 @@ void TImageHFE::BridgeDiskChanged(bool disk_in) {
       FloppyDisk[Id].ReadOnly=!BridgeCanWrite();
       FloppyDisk[Id].WriteProtect=FloppyDisk[Id].ReadOnly;
     }
+    else // no disk: a real drive's write-protect sensor is "protected"
+      FloppyDisk[Id].WriteProtect=true; // until a disk is in again
   }
 }
 
@@ -1013,6 +1018,14 @@ bool TImageHFE::LoadBridgeTrack(BYTE side,BYTE track,THfeV3Track &t) {
     BridgeDiskChanged(disk_in); // disk taken out or put in
   if(BridgeVerify)
     BridgeVerifyDisk(side,track,t); // same disk as before the drive was idle?
+  if(BridgeTraceLoads && (side!=BridgeLastSide || track!=BridgeLastTrack))
+  {
+    BridgeTraceLoads--;
+    char msg[100];
+    sprintf(msg,"ST reads track %d side %d%s",track,side,
+      (t.Data && (t.Dirty || !t.Unread)) ? " (already read)" : "");
+    FloppyBridgeLogMessage(Bridge,msg);
+  }
   BridgeLastSide=side;
   BridgeLastTrack=track;
   if(t.Data && (t.Dirty || !t.Unread))

@@ -91,6 +91,7 @@ struct  TImageHFE:public TImageMfm {
   bool BridgeVerify; // the drive was idle: check it's still the same disk
   bool BridgeLastWP; // write-protect sensor at the last poll
   int BridgeLastSide,BridgeLastTrack; // last track loaded
+  int BridgeTraceLoads; // after a disk change: log what the ST reads
   // write the tracks the ST changed to the real disk (except keep)
   void BridgeFlush(const THfeV3Track *keep);
   bool BridgeCanWrite(); // write=on and the disk isn't write-protected
