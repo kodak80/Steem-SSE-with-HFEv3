@@ -546,8 +546,14 @@ static void MarkDifferences(const BYTE *a,int abits,int pa,const BYTE *b,
     }
     if(!diff)
       continue;
+    // a few cells: those cells are weak (a fuzzy transition read in one
+    // cell or the next: Dungeon Master's $68/$E8); more: the whole byte
     for(int k=0;k<16;k++)
-      SetMfmBit(weak,pa+g+k,1);
+    {
+      int ib=pb+off+g+k;
+      if(diff>4 || ib<0 || ib>=bbits || MfmBit(a,pa+g+k)!=MfmBit(b,ib))
+        SetMfmBit(weak,pa+g+k,1);
+    }
     if(diff>4)
     {
       // slipped? keep the shift that matches the next 64 cells best
@@ -574,6 +580,47 @@ static void MarkDifferences(const BYTE *a,int abits,int pa,const BYTE *b,
         off=best;
     }
   }
+}
+
+
+/*  A fuzzy area is usually a run of the same byte (Dungeon Master: 489 x
+    $68, each read as $68 or $E8), but the drive may show only a few of them
+    changing over the revolutions read. So the cells found weak in one byte
+    are also made weak in the bytes around it that are the same (apart from
+    those cells), as far as the run goes. Whole weak bytes aren't extended.
+*/
+static void ExtendFuzzyRuns(const BYTE *base,int nbits,int start,int len,
+  BYTE *weak) {
+  int n=len/16;
+  std::vector<WORD> pat(n),msk(n);
+  for(int i=0;i<n;i++)
+  {
+    pat[i]=msk[i]=0;
+    for(int k=0;k<16;k++)
+    {
+      int p=start+i*16+k;
+      if(p>=nbits)
+        break;
+      pat[i]=(WORD)((pat[i]<<1)|MfmBit(base,p));
+      msk[i]=(WORD)((msk[i]<<1)|MfmBit(weak,p));
+    }
+  }
+  std::vector<WORD> add(n,0);
+  for(int i=0;i<n;i++)
+  {
+    WORD m=msk[i];
+    if(!m || m==0xFFFF)
+      continue;
+    for(int dir=-1;dir<=1;dir+=2)
+      for(int j=i+dir;j>=0 && j<n && msk[j]!=0xFFFF
+        && (pat[j]&~m)==(pat[i]&~m);j+=dir)
+        add[j]|=m;
+  }
+  for(int i=0;i<n;i++)
+    if(add[i])
+      for(int k=0;k<16;k++)
+        if(add[i]&(0x8000>>k) && start+i*16+k<nbits)
+          SetMfmBit(weak,start+i*16+k,1);
 }
 
 
@@ -637,10 +684,16 @@ void FloppyBridgeMergeRevolutions(BYTE *base,int nbits,
         MarkDifferences(base,nbits,cb.sec_start[k],others[r],others_bits[r],
           co[r].sec_start[j],len,weak);
     }
+    ExtendFuzzyRuns(base,nbits,cb.sec_start[k],len,weak);
     int bytes=0;
     for(int g=0;g<len;g+=16)
-      if(cb.sec_start[k]+g<nbits && MfmBit(weak,cb.sec_start[k]+g))
+    {
+      bool w=false;
+      for(int q=0;q<16 && !w;q++)
+        w=(cb.sec_start[k]+g+q<nbits && MfmBit(weak,cb.sec_start[k]+g+q));
+      if(w)
         bytes++;
+    }
     if(bytes)
     {
       if(m.weak_sectors<FLOPPYBRIDGE_CHECK_MAX)
@@ -649,84 +702,6 @@ void FloppyBridgeMergeRevolutions(BYTE *base,int nbits,
       m.weak_bytes+=bytes;
     }
   }
-}
-
-
-/*  Fuzzy bits by timing. A fuzzy area (Dungeon Master's sector 7) is
-    written with flux transitions half way between two bit cells: the
-    drive's PLL decides one way or the other, and FloppyBridge's PLL may
-    decide the same way on every revolution, so comparing revolutions finds
-    little (1 byte of DM's sector). But the time measured for those bytes is
-    off by 10-25% (a 5us gap read as 4 or 6us), while an ordinary sector,
-    even a slower Copylock one, is even to a few %. So in a sector with a bad
-    CRC, the data bytes more than 10% off the sector's median are weak - if
-    there are enough of them (8) to be a fuzzy area rather than one glitch.
-*/
-int FloppyBridgeTimingWeak(const TFloppyBridgeCheck &c,const unsigned short *speed,
-  int nbytes,int nbits,unsigned char *weak,int *weak_bytes,
-  unsigned char *list,int *stats) {
-  int sectors=0,total=0;
-  for(int k=0;k<c.secs;k++)
-  {
-    if(stats)
-      stats[k*4]=stats[k*4+1]=stats[k*4+2]=stats[k*4+3]=0;
-    if(c.sec_good[k])
-      continue;
-    // one value per data byte (16 cells = 2 MFM bytes)
-    std::vector<int> v;
-    std::vector<int> pos;
-    for(int p=c.sec_start[k];p+16<=c.sec_end[k] && p+16<=nbits;p+=16)
-    {
-      int b=p/8;
-      if(b+1>=nbytes)
-        break;
-      // a byte that isn't aligned on the speed bytes spans 3 of them
-      int sum=speed[b]+speed[b+1],n=2;
-      if((p&7) && b+2<nbytes)
-      {
-        sum+=speed[b+2];
-        n++;
-      }
-      v.push_back(sum/n);
-      pos.push_back(p);
-    }
-    if(v.size()<16)
-      continue;
-    std::vector<int> sorted(v);
-    std::sort(sorted.begin(),sorted.end());
-    int med=sorted[sorted.size()/2];
-    if(med<=0)
-      continue;
-    int off=0,maxdev=0;
-    for(size_t i=0;i<v.size();i++)
-    {
-      int d=abs(v[i]-med)*1000/med;
-      if(d>100)
-        off++;
-      if(d>maxdev)
-        maxdev=d;
-    }
-    if(stats)
-    {
-      stats[k*4]=med;
-      stats[k*4+1]=off;
-      stats[k*4+2]=(int)v.size();
-      stats[k*4+3]=maxdev;
-    }
-    if(off<8 || !weak)
-      continue;
-    for(size_t i=0;i<v.size();i++)
-      if(abs(v[i]-med)*1000/med>100)
-        for(int j=0;j<16;j++)
-          SetMfmBit(weak,pos[i]+j,1);
-    if(list && sectors<FLOPPYBRIDGE_CHECK_MAX)
-      list[sectors]=c.sec_id[k];
-    sectors++;
-    total+=off;
-  }
-  if(weak_bytes)
-    *weak_bytes=total;
-  return sectors;
 }
 
 
@@ -1072,14 +1047,6 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
       FloppyBridgeCheckTrack(mfm,best_bits,best_check);
   }
   best_raw.assign(speed,speed+(best_bits+7)/8);
-  // fuzzy bits the revolutions didn't show: by timing
-  int timing_stats[FLOPPYBRIDGE_CHECK_MAX*4];
-  unsigned char timing_list[FLOPPYBRIDGE_CHECK_MAX];
-  int timing_bytes=0,timing_sectors=0;
-  if(best_check.bad)
-    timing_sectors=FloppyBridgeTimingWeak(best_check,&best_raw[0],
-      (int)best_raw.size(),best_bits,weak,&timing_bytes,timing_list,
-      timing_stats);
   int mn,mx;
   FloppyBridgeSmoothSpeeds(speed,(best_bits+7)/8,drv->density,&mn,&mx,
     &best_check);
@@ -1103,25 +1070,6 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
       n+=snprintf(lens+n,sizeof(lens)-n,"%s%d",r?"/":"",rev_len[r]);
     Log(drv,"          revolutions read: %s bits%s",lens,
       stale?" (waited for fresh ones)":"");
-    for(int k=0;k<best_check.secs;k++)
-    {
-      if(best_check.sec_good[k] || !timing_stats[k*4+2])
-        continue;
-      int d=timing_stats[k*4+3];
-      Log(drv,"          sector %d: bad CRC; data byte timing median %d, %d of %d bytes >10%% off (max %d.%d%%)%s",
-        best_check.sec_id[k],timing_stats[k*4],timing_stats[k*4+1],
-        timing_stats[k*4+2],d/10,d%10,
-        timing_stats[k*4+1]>=8?" -> fuzzy":"");
-    }
-  }
-  if(timing_sectors)
-  {
-    char wk[200]="";
-    int n=0;
-    for(int k=0;k<timing_sectors && k<FLOPPYBRIDGE_CHECK_MAX && n<150;k++)
-      n+=snprintf(wk+n,sizeof(wk)-n," %d",timing_list[k]);
-    Log(drv,"          WEAK BITS (fuzzy timing): sector%s%s, %d bytes",
-      timing_sectors>1?"s":"",wk,timing_bytes);
   }
   if(merge.repaired || merge.weak_sectors)
   {

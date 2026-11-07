@@ -136,15 +136,6 @@ struct TFloppyBridgeMerge {
 void FloppyBridgeMergeRevolutions(unsigned char *base,int nbits,
   const unsigned char *const *others,const int *others_bits,int nothers,
   unsigned char *weak,TFloppyBridgeMerge &m);
-// Fuzzy bits found by timing (see the .cpp): in each sector with a bad CRC,
-// data bytes whose measured time is >10% off the sector's median are marked
-// in weak if there are at least 8. speed: raw per-MFM-byte speeds. Returns
-// the number of sectors marked (their numbers in list), the bytes marked in
-// weak_bytes; stats (4 per sector of c, may be NULL): median, bytes off,
-// bytes, max deviation in 1/1000.
-int FloppyBridgeTimingWeak(const TFloppyBridgeCheck &c,const unsigned short *speed,
-  int nbytes,int nbits,unsigned char *weak,int *weak_bytes,
-  unsigned char *list,int *stats);
 // smooth/normalise per-byte speeds (1000 = nominal) as density= says; in
 // auto mode c (the sectors found on the track) decides, see the .cpp
 void FloppyBridgeSmoothSpeeds(unsigned short *speed,int nbytes,int mode,

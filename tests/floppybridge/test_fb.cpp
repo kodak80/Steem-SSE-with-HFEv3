@@ -165,35 +165,31 @@ int main(){
     CHECK(mg.repaired==0 && mg.weak_sectors==0 && !anyw,"stable bad sector: no repair, no weak bits");
   }
 
-  // fuzzy bits by timing: a stable bad sector whose fuzzy bytes read 10-25% off
-  { auto normal=[](int s,int i){return (i*7+s)&0xFF;};
-    Mfm t=GenTrack(normal,7); auto v=t.Pack(); int nb=(int)t.bits.size(),nbytes=(nb+7)/8;
-    TFloppyBridgeCheck c; FloppyBridgeCheckTrack(&v[0],nb,c);
-    int k7=FindSector(c,7,0),st=c.sec_start[k7];
-    std::vector<WORD> sp(nbytes);
-    for(int i=0;i<nbytes;i++) sp[i]=(WORD)(1000+((i*37)%41)-20); // +-2% jitter
-    // data bytes 200-259 of sector 7: alternately 20% fast/slow
-    for(int i=200;i<260;i++){ int b=(st+i*16)/8; WORD x=(i&1)?1200:820; sp[b]=sp[b+1]=x; if(b+2<nbytes && ((st+i*16)&7)) sp[b+2]=x; }
-    std::vector<BYTE> wk(v.size(),0); int bytes=0,stats[FLOPPYBRIDGE_CHECK_MAX*4]; BYTE list[FLOPPYBRIDGE_CHECK_MAX];
-    int n=FloppyBridgeTimingWeak(c,&sp[0],nbytes,nb,&wk[0],&bytes,list,stats);
-    CHECK(n==1 && list[0]==7 && bytes>=55 && bytes<=62,"fuzzy timing: sector 7 (%d sectors, %d bytes)",n,bytes);
-    CHECK(MfmBit(&wk[0],st+230*16+5) && !MfmBit(&wk[0],st+100*16+5) && !MfmBit(&wk[0],st+400*16+5),"fuzzy timing: only the odd bytes are weak");
-    // Copylock-like: the whole bad sector 5% slower, even: nothing
-    for(int i=0;i<nbytes;i++) sp[i]=(WORD)(1000+((i*37)%41)-20);
-    for(int p=c.sec_start[k7]/8;p<c.sec_end[k7]/8+2;p++) sp[p]=(WORD)(sp[p]+50);
-    std::fill(wk.begin(),wk.end(),0);
-    n=FloppyBridgeTimingWeak(c,&sp[0],nbytes,nb,&wk[0],&bytes,list,stats);
-    bool anyw=false; for(auto x:wk) if(x) anyw=true;
-    CHECK(n==0 && !anyw && stats[k7*4+1]==0,"slow even sector (Copylock): no weak bits");
-    // a few odd bytes only: a glitch, not fuzzy
-    for(int i=300;i<305;i++){ int b=(st+i*16)/8; sp[b]=sp[b+1]=1300; }
-    n=FloppyBridgeTimingWeak(c,&sp[0],nbytes,nb,&wk[0],&bytes,list,stats);
-    CHECK(n==0 && stats[k7*4+1]>=4 && stats[k7*4+1]<8,"5 odd bytes: not fuzzy (%d)",stats[k7*4+1]);
-    // good sectors are never marked
-    Mfm g=GenTrack(normal); auto vg=g.Pack(); TFloppyBridgeCheck cg; FloppyBridgeCheckTrack(&vg[0],(int)g.bits.size(),cg);
-    for(int i=0;i<nbytes;i++) sp[i]=(i&1)?1300:800;
-    n=FloppyBridgeTimingWeak(cg,&sp[0],nbytes,(int)g.bits.size(),&wk[0],&bytes,list,stats);
-    CHECK(n==0,"good sectors: no timing weak bits");
+  // Dungeon Master: sector 7 bytes 20-508 = $68, each may read $E8; the
+  // drive shows only one of them changing over the revolutions
+  { auto dm=[](int e8){ return [e8](int s,int i){ if(s==7 && i>=20 && i<=508) return (i==e8)?0xE8:0x68; return (i*7+s)&0xFF; }; };
+    Mfm a=GenTrack(dm(-1),7),b=GenTrack(dm(300),7,0),c=GenTrack(dm(-1),7,0);
+    auto va=a.Pack(),vb=b.Pack(),vc=c.Pack(); const BYTE*o[2]={&vb[0],&vc[0]}; int ob[2]={(int)b.bits.size(),(int)c.bits.size()};
+    int nb=(int)a.bits.size();
+    std::vector<BYTE> wk(va.size(),0); TFloppyBridgeMerge mg;
+    FloppyBridgeMergeRevolutions(&va[0],nb,o,ob,2,&wk[0],mg);
+    CHECK(mg.weak_sectors==1 && mg.weak_list[0]==7 && mg.weak_bytes>=485 && mg.weak_bytes<=492,"DM: the whole $68 run is weak (%d bytes)",mg.weak_bytes);
+    TFloppyBridgeCheck ca; FloppyBridgeCheckTrack(&va[0],nb,ca); int st=ca.sec_start[FindSector(ca,7,0)];
+    // read it many times with the weak cells random, as GetImageWord does
+    bool only=true,varies=false; int first=-1; unsigned rnd=12345;
+    for(int rd=0;rd<20;rd++){
+      std::vector<BYTE> v(va); for(size_t q=0;q<v.size();q++){ rnd=rnd*1103515245+12345; v[q]=(BYTE)((v[q]&~wk[q])|((rnd>>16)&wk[q])); }
+      int sum=0;
+      for(int i=0;i<512;i++){ int x=0; for(int k=0;k<8;k++) x=(x<<1)|MfmBit(&v[0],st+i*16+k*2+1);
+        if(i>=20 && i<=508){ if(x!=0x68 && x!=0xE8) only=false; sum+=x; }
+        else if(x!=((i*7+7)&0xFF)) only=false; }
+      if(first<0) first=sum; else if(sum!=first) varies=true;
+    }
+    CHECK(only,"DM: weak bytes read only as $68 or $E8, the rest unchanged");
+    CHECK(varies,"DM: two reads differ");
+    // the bytes before the run (the $01E9 count) aren't weak
+    bool pre=false; for(int q=0;q<16*18;q++) if(MfmBit(&wk[0],st+q)) pre=true;
+    CHECK(!pre,"DM: bytes before the run aren't weak");
   }
 
   // same disk or another one?
