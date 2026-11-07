@@ -700,6 +700,7 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
     one is kept: a real FDC would retry too.
 */
   std::vector<BYTE> tmp(max_bytes);
+  std::vector<WORD> tmp_speed(max_bytes);
   int best_bits=0,best_score=-1,revs=0;
   std::vector<WORD> best_raw; // speeds before smoothing, for the log
   TFloppyBridgeCheck best_check;
@@ -730,25 +731,44 @@ int FloppyBridgeReadTrack(void *handle,int side,int track,
     revs++;
     TFloppyBridgeCheck c;
     FloppyBridgeCheckTrack(&tmp[0],bits,c);
-    int score=c.good*4+c.ids-c.bad*2;
+/*  getMFMSpeed returns "garbage" until FloppyBridge is ready, and on the
+    first track after the motor starts it gets ready a moment after
+    getMFMTrack already returned the data (m_firstTrackMode is cleared when
+    its background read finishes). Taking the speeds then gave a flat 1000
+    and Total Recall's Copylock sector wasn't slower any more -> the game
+    halted. So: wait until ready, and if the speeds are still missing, read
+    another revolution.
+*/
+    for(int w=0;w<1000 && !api->isReady();w+=5)
+      FbSleep(5);
+    // getMFMSpeed reads the revolution just returned: one speed per byte
+    int nbytes=(bits+7)/8,garbage=0;
+    for(int i=0;i<nbytes;i++)
+    {
+      int sp=api->getMFMSpeed(i*8);
+      if(sp<700 || sp>3000) // turbo (100), not ready or garbage: nominal
+      {
+        sp=FLOPPYBRIDGE_SPEED_NOMINAL;
+        garbage++;
+      }
+      tmp_speed[i]=(unsigned short)sp;
+    }
+    bool speed_ok=(garbage<nbytes/2);
+    if(!speed_ok)
+      Log(drv,"track %2d side %d: no speed data on rev %d (ready %s)",track,side,
+        revs,api->isReady()?"yes":"no");
+    // revolutions with speed data first, then the one with the best sectors
+    int score=(speed_ok?100000:0)+c.good*4+c.ids-c.bad*2;
     if(score>best_score)
     {
       best_score=score;
       best_bits=bits;
       best_check=c;
-      memcpy(mfm,&tmp[0],(bits+7)/8);
-      // getMFMSpeed reads the revolution just returned: one speed per byte
-      int nbytes=(bits+7)/8;
-      for(int i=0;i<nbytes;i++)
-      {
-        int sp=api->getMFMSpeed(i*8);
-        if(sp<700 || sp>3000) // turbo (100), not ready or garbage: nominal
-          sp=FLOPPYBRIDGE_SPEED_NOMINAL;
-        speed[i]=(unsigned short)sp;
-      }
+      memcpy(mfm,&tmp[0],nbytes);
+      memcpy(speed,&tmp_speed[0],nbytes*sizeof(WORD));
     }
     // a good track (or a blank or unusual one: retrying won't help)
-    if(c.bad==0 && c.bad_ids==0)
+    if(c.bad==0 && c.bad_ids==0 && speed_ok)
       break;
   }
   if(!best_bits)
