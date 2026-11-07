@@ -6,6 +6,27 @@ branch (r1511), adding support for HFE v3 floppy images ("HXCHFEV3", as
 written by the HxC Floppy Emulator software and used by FlashFloppy and HxC
 hardware). Source: https://github.com/kodak80/Steem-SSE-with-HFEv3
 
+What's new in HFEv3-5
+- Writing to real floppy disks (Greaseweazle / FloppyBridge). Add write=on
+  to Greaseweazle.hfe and what the ST writes goes to the real disk: saved
+  games and high scores, files and folders from the desktop, formatting a
+  blank disk. Off by default: without write=on the disk stays read-only
+  (write-protected for the ST), and a disk with its write-protect tab set
+  is always write-protected.
+  How it works: the Greaseweazle can only start a write at the index hole,
+  not at a given sector, so a track the ST changes is rewritten whole - the
+  track as Steem read it, with the ST's changes - starting in its largest
+  gap so the join falls between sectors. It's written when the head moves
+  to another track, when the ST's drive motor stops, when Steem stops and
+  on eject, then read back and every sector checked (written again if
+  needed). Greaseweazle.log shows each track written and verified.
+  Use copies, not originals: the track is rewritten at the normal density,
+  so a density copy protection (Copylock) on a track the ST writes to would
+  be lost - a real ST only rewrites the sector it changes. Tracks that
+  couldn't be read aren't written unless the ST formats them.
+  Confirmed: formatting, folders, saving the desktop, write-protect, Crazy
+  Cars high scores.
+
 What's new in HFEv3-4
 - Real floppy drives: a drive connected to a Greaseweazle (or a DrawBridge or
   SuperCard Pro) can now be used as Steem's drive A: or B:, so you can boot
@@ -30,7 +51,7 @@ What's new in HFEv3-4
   each track read, its sectors and the measured speeds.
   Confirmed with: Road Blasters (KIXX), Backlash, Total Recall disks 1 and 2
   (Copylock), UN Squadron.
-  Limits: read-only (the disk shows as write-protected); to swap the real
+  Limits: read-only in HFEv3-4 (see HFEv3-5 for writing); to swap the real
   disk, eject and re-insert Greaseweazle.hfe so the ST sees the change; one
   revolution is kept per track, so protections relying on weak bits reading
   differently each time may not pass; Windows only.
