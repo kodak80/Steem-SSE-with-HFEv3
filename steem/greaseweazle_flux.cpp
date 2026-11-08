@@ -206,6 +206,7 @@ struct TGwFlux {
   bool dskchg_ok; // the disk-change line can be read
   bool noclick_ok; // firmware can reset it without a click
   bool disk_was_out;
+  bool rereading;
 };
 
 
@@ -611,7 +612,12 @@ int GwFluxReadTrack(void *handle,int side,int track,TGwFluxRev *revs,
       Select(gw,true);
       if(gw->cyl!=track)
       {
-        ack=Command1(gw,GW_SEEK,track);
+        // where the head is isn't known (after a disk change, a reset...):
+        // back to track 0 first, the drive's sensor tells where it is
+        if(gw->cyl<0 && track)
+          ack=Command1(gw,GW_SEEK,0);
+        if(ack==GW_ACK_OKAY)
+          ack=Command1(gw,GW_SEEK,track);
         what="seek";
         if(ack==GW_ACK_OKAY)
           gw->cyl=track;
@@ -688,7 +694,32 @@ int GwFluxReadTrack(void *handle,int side,int track,TGwFluxRev *revs,
     return 0;
   }
   int n=GwSplitRevolutions(flux,index,gw->sample_freq,revs,nrevs);
-  // the log: revolution time, and what the ST would find on the first one
+  // what the ST would find on the first revolution
+  TFloppyBridgeCheck c;
+  memset(&c,0,sizeof(c));
+  double rev_ms=0;
+  if(n && index.size()>=2)
+  {
+    rev_ms=(index[1]-index[0])*1000.0/gw->sample_freq;
+    unsigned int rev_units=(unsigned int)((index[1]-index[0])
+      *(GWFLUX_UNITS_PER_US*1000000ull)/gw->sample_freq);
+    static unsigned char mfm[32768];
+    int nbits=GwFluxToBits(revs[0],rev_units,mfm,sizeof(mfm));
+    FloppyBridgeCheckTrack(mfm,nbits,c);
+  }
+  // sectors of another track: the head isn't where we thought (some
+  // protections number their sectors oddly: only one try)
+  if(c.ids>=3 && c.id_track!=track && !gw->rereading)
+  {
+    Log(gw,"track %2d side %d: the sectors say track %d - back to track 0 and again",
+      track,side,c.id_track);
+    gw->cyl=-1;
+    gw->rereading=true;
+    int r=GwFluxReadTrack(gw,side,track,revs,max_revs);
+    gw->rereading=false;
+    return r;
+  }
+  // the log
   if(gw->log)
   {
     char line[400];
@@ -696,13 +727,6 @@ int GwFluxReadTrack(void *handle,int side,int track,TGwFluxRev *revs,
       track,side,n,(int)ms);
     if(n && index.size()>=2)
     {
-      double rev_ms=(index[1]-index[0])*1000.0/gw->sample_freq;
-      unsigned int rev_units=(unsigned int)((index[1]-index[0])
-        *(GWFLUX_UNITS_PER_US*1000000ull)/gw->sample_freq);
-      static unsigned char mfm[32768];
-      int nbits=GwFluxToBits(revs[0],rev_units,mfm,sizeof(mfm));
-      TFloppyBridgeCheck c;
-      FloppyBridgeCheckTrack(mfm,nbits,c);
       len+=snprintf(line+len,sizeof(line)-len,
         " %.2f ms/rev, %d transitions | %d IDs",rev_ms,(int)revs[0].size(),
         c.ids);
@@ -757,6 +781,7 @@ int GwFluxPoll(void *handle,bool *write_protected) {
     {
       if(Command(gw,GW_NOCLICKSTEP,NULL,0)==GW_ACK_OKAY)
         in=GetPin(gw,34);
+      gw->cyl=-1; // the step may have moved the head (it did, to track 0)
       if(in==0)
         gw->disk_was_out=true;
     }
