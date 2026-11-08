@@ -107,6 +107,9 @@ struct  TImageSCP:public TImageMfm {
   TSCP_track_header track_header;
   BYTE rev;
   BYTE Wobble;
+  // single-sided image: -1 = tracks stored one after the other, 0/1 = the
+  // head whose tracks are at cylinder*2+head (as Greaseweazle writes them)
+  signed char SingleHead;
   int units_rest;
 #if defined(SSE_GREASEWEAZLE_FLUX)
   // Flux mode: a descriptor file (text starting with "GREASEWEAZLE") opens

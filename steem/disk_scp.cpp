@@ -221,6 +221,7 @@ void TImageSCP::Init() {
   N_TRACKS=83; //max
   nBytes=DISK_BYTES_PER_TRACK; //not really pertinent (TODO?)
   Wobble=5;
+  SingleHead=-1;
 }
 
 
@@ -236,6 +237,27 @@ bool TImageSCP::LoadTrack(BYTE side,BYTE track,bool reload) {
   BYTE trackn=track;
   if(N_SIDES==2) // general case
     trackn=track*2+side; 
+  else if(SingleHead>=0) // single-sided, cylinder*2+head numbering
+    trackn=(BYTE)(track*2+SingleHead);
+  if(trackn>=166 || !file_header.IFF_THDOFFSET[trackn]
+    || (SingleHead>=0 && side!=SingleHead))
+  {
+    // a track the image doesn't have (or the other side of a single-sided
+    // image): one transition a revolution, nothing for the FDC to find
+    if(TimeFromIndexPulse)
+      free(TimeFromIndexPulse);
+    TimeFromIndexPulse=(DWORD*)calloc(1,sizeof(DWORD));
+    if(!TimeFromIndexPulse)
+      return false;
+    TimeFromIndexPulse[0]=8000000; // 200ms in 25ns units
+    nBits=1;
+    BitPosition=0;
+    rev=0;
+    track_header.TDH_TRACKNUM=0xFF;
+    FloppyDisk[Id].current_side=side;
+    FloppyDisk[Id].current_track=track;
+    return true;
+  }
   if(track_header.TDH_TRACKNUM==trackn //already loaded
     && !rev && (!reload||file_header.IFF_NUMREVS==1))
     return true;
@@ -383,10 +405,35 @@ bool TImageSCP::Open(char *path) {
       if(!strncmp(DISK_EXT_SCP,(char*)&file_header.IFF_ID,3)) // it's SCP
       {
         // compute N_SIDES and N_TRACKS
+        // (the track header has room for 5 revolutions)
+        if(file_header.IFF_NUMREVS>5)
+          file_header.IFF_NUMREVS=5;
+        if(!file_header.IFF_NUMREVS)
+          file_header.IFF_NUMREVS=1;
+        SingleHead=-1;
         if(file_header.IFF_HEADS)
         {
           N_SIDES=1;
           N_TRACKS=file_header.IFF_END-file_header.IFF_START+1;
+          // Greaseweazle (and the SCP spec) keep cylinder*2+head even for
+          // one side: entries for the other head are all empty
+          int head=(file_header.IFF_HEADS==2) ? 1 : 0;
+          bool other=false,mine=false;
+          for(int i=0;i<166;i++)
+            if(file_header.IFF_THDOFFSET[i])
+            {
+              if((i&1)==head)
+                mine=true;
+              else
+                other=true;
+            }
+          if(mine && !other)
+          {
+            SingleHead=(signed char)head;
+            N_TRACKS=(file_header.IFF_END-file_header.IFF_START)/2+1;
+            if(file_header.IFF_START==0)
+              N_TRACKS=file_header.IFF_END/2+1;
+          }
         }
         else
           N_TRACKS=(file_header.IFF_END-file_header.IFF_START+1)/2;
