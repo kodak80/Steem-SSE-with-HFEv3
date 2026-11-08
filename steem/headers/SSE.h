@@ -261,9 +261,8 @@ compilation of about everything.
 #define SSE_EMU_THREAD // reduces hiccups
 #if defined(SSE_DISK_HFE)
 #define SSE_FLOPPYBRIDGE // real drive on a Greaseweazle etc. via FloppyBridge (HFE bridge mode)
-#if defined(SSE_DISK_SCP)
+// (SSE_DISK_SCP, which it needs, is defined further down)
 #define SSE_GREASEWEAZLE_FLUX // real drive on a Greaseweazle read as raw flux (SCP flux mode)
-#endif
 #endif
 #define SSE_GEM_CONTROL_PANEL // fun!
 #define SSE_GUI_BIGICONS // for high DPI screens
@@ -333,6 +332,9 @@ compilation of about everything.
 #if defined(SSE_WD1772_LL)
 #define SSE_DISK_SCP // Supercard Pro disk image format support
 #endif
+#endif
+#if defined(SSE_GREASEWEAZLE_FLUX) && !defined(SSE_DISK_SCP)
+#undef SSE_GREASEWEAZLE_FLUX // flux mode plays tracks through the SCP reader
 #endif
 
 #ifdef SSE_DISK_STW
