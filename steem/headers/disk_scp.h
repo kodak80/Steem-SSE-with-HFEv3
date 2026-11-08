@@ -123,7 +123,8 @@ struct  TImageSCP:public TImageMfm {
   struct TGwTrack {
     TGwFluxRev Rev[GWFLUX_MAX_REVS];
     int nRevs; // 0: not read yet
-    bool Tried; // read failed: don't keep trying while the ST retries
+    bool Tried; // read failed: don't keep trying while the ST retries...
+    unsigned int TriedAt; // ...for 2 seconds (ms)
   } *GwTracks; // 2 sides x cylinders
   int GwCylinders,GwPollCount;
   bool GwDiskIn,GwWP;

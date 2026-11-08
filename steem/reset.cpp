@@ -404,6 +404,11 @@ void reset_st(DWORD const flags) {
   bool Warm=((flags & RESET_WARM)!=0);
   bool ChangeSettings=((flags & RESET_NOCHANGESETTINGS)==0);
   bool Backup=((flags & RESET_NOBACKUP)==0 && SSEOptions.ResetBackup);
+#if defined(SSE_GREASEWEAZLE_FLUX)
+  // a real disk in flux mode is read again after a reset, as on an ST
+  for(int d=0;d<2;d++)
+    ImageSCP[d].GwDropTracks();
+#endif
   if(runstate==RUNSTATE_RUNNING && Stop) 
     runstate=RUNSTATE_STOPPING;
 #if !defined(SSE_LIBRETRONUKE)

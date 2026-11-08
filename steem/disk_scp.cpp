@@ -33,6 +33,9 @@ TODO: 8bit images not tested
 #include <debug.h>
 #include <computer.h>
 #include <iolist.h>
+#if defined(SSE_GREASEWEAZLE_FLUX)
+#include <chrono>
+#endif
 
 
 #define N_SIDES FloppyDisk[Id].Sides
@@ -460,10 +463,13 @@ bool TImageSCP::LoadGwTrack(BYTE side,BYTE track,bool reload) {
   if(track_header.TDH_TRACKNUM==trackn && TimeFromIndexPulse && !rev
     && (!reload || t.nRevs<=1))
     return true;
-  if(!t.nRevs && !t.Tried)
+  unsigned int now=(unsigned int)std::chrono::duration_cast<std::chrono::milliseconds>(
+    std::chrono::steady_clock::now().time_since_epoch()).count();
+  if(!t.nRevs && (!t.Tried || now-t.TriedAt>2000))
   {
     t.nRevs=GwFluxReadTrack(Gw,side,track,t.Rev,GWFLUX_MAX_REVS);
     t.Tried=true;
+    t.TriedAt=now;
   }
   if(!reload)
     units_rest=0;
@@ -483,12 +489,15 @@ bool TImageSCP::LoadGwTrack(BYTE side,BYTE track,bool reload) {
   if(!t.nRevs)
   {
     // nothing read (no disk...): one transition a revolution, the FDC
-    // finds nothing, as with an unformatted track
+    // finds nothing, as with an unformatted track; not kept, so the ST
+    // retrying tries the drive again (every 2 seconds)
+    track_header.TDH_TRACKNUM=0xFF;
     TimeFromIndexPulse=(DWORD*)calloc(1,sizeof(DWORD));
     if(!TimeFromIndexPulse)
       return false;
     TimeFromIndexPulse[0]=200000*GWFLUX_UNITS_PER_US;
     nBits=1;
+    BitPosition=0;
     return true;
   }
   const TGwFluxRev &r=t.Rev[rev];
@@ -500,6 +509,8 @@ bool TImageSCP::LoadGwTrack(BYTE side,BYTE track,bool reload) {
   for(size_t i=0;i<r.size();i++)
     TimeFromIndexPulse[i]=r[i]+units_from_ip;
   nBits=(DWORD)r.size();
+  if(BitPosition>=nBits) // the track before was longer
+    BitPosition=0;
   TRACE_LOG("SCP Greaseweazle side %d track %d rev %d/%d %d transitions\n",
     side,track,rev+1,nrevs,nBits);
   return true;
@@ -552,6 +563,8 @@ void TImageSCP::GwPoll() {
   if(!Gw || ++GwPollCount<25)
     return;
   GwPollCount=0;
+  if(!(Fdc.str&FDC_STR_MO))
+    GwFluxMotorOff(Gw); // in case the motor-off hook was missed
   bool wp=GwWP;
   int st=GwFluxPoll(Gw,&wp);
   if(st==GWFLUX_POLL_NODISK && GwDiskIn)

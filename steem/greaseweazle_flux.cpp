@@ -282,6 +282,30 @@ static int Command1(TGwFlux *gw,int cmd,int param) {
 }
 
 
+static const char *AckText(int ack) {
+  static const char *text[]={"OK","bad command","no index","no track 0",
+    "flux overflow","flux underflow","write-protected","no drive selected",
+    "no bus type","bad drive","bad pin","bad cylinder"};
+  if(ack<0)
+    return "no answer";
+  if(ack<(int)(sizeof(text)/sizeof(text[0])))
+    return text[ack];
+  return "error";
+}
+
+
+// back to a known state: bus reset (motor off, drive deselected)
+static void Recover(TGwFlux *gw) {
+  PurgeComm(gw->port,PURGE_RXCLEAR|PURGE_TXCLEAR);
+  Command(gw,GW_RESET,NULL,0);
+  Command1(gw,GW_SETBUSTYPE,gw->bus);
+  gw->selected=false;
+  gw->motor=false;
+  gw->cyl=-1;
+  Log(gw,"Greaseweazle reset");
+}
+
+
 static void Select(TGwFlux *gw,bool on) {
   if(on==gw->selected)
     return;
@@ -565,29 +589,40 @@ int GwFluxReadTrack(void *handle,int side,int track,TGwFluxRev *revs,
   if(!gw || track<0 || track>=gw->cylinders)
     return 0;
   auto start=std::chrono::steady_clock::now();
-  if(!gw->motor)
+  // motor, select, seek; if the Greaseweazle refuses (eg it switched the
+  // drive off itself after a long idle time), reset it and try once more
+  for(int attempt=0;;attempt++)
   {
-    unsigned char p[2]={(unsigned char)gw->unit,1};
-    if(Command(gw,GW_MOTOR,p,2)!=GW_ACK_OKAY) // waits for spin-up
+    int ack=GW_ACK_OKAY;
+    const char *what="";
+    if(!gw->motor)
     {
-      Log(gw,"motor on failed");
-      return 0;
+      unsigned char p[2]={(unsigned char)gw->unit,1};
+      ack=Command(gw,GW_MOTOR,p,2); // waits for spin-up
+      what="motor on";
+      if(ack==GW_ACK_OKAY)
+      {
+        gw->motor=true;
+        Log(gw,"motor on");
+      }
     }
-    gw->motor=true;
-    Log(gw,"motor on");
-  }
-  Select(gw,true);
-  if(gw->cyl!=track)
-  {
-    int ack=Command1(gw,GW_SEEK,track);
-    if(ack!=GW_ACK_OKAY)
+    if(ack==GW_ACK_OKAY)
     {
-      Log(gw,"seek to track %d failed (%s)",track,
-        ack==GW_ACK_NOTRK0 ? "no track 0 signal" : "error");
-      gw->cyl=-1;
-      return 0;
+      Select(gw,true);
+      if(gw->cyl!=track)
+      {
+        ack=Command1(gw,GW_SEEK,track);
+        what="seek";
+        if(ack==GW_ACK_OKAY)
+          gw->cyl=track;
+      }
     }
-    gw->cyl=track;
+    if(ack==GW_ACK_OKAY)
+      break;
+    Log(gw,"%s (track %d) failed: %s",what,track,AckText(ack));
+    if(attempt)
+      return 0;
+    Recover(gw);
   }
   Command1(gw,GW_HEAD,side);
   int nrevs=gw->revs<max_revs ? gw->revs : max_revs;
@@ -641,16 +676,9 @@ int GwFluxReadTrack(void *handle,int side,int track,TGwFluxRev *revs,
     Log(gw,"track %2d side %d: read failed (%s)",track,side,
       status==GW_ACK_NOINDEX ? "no index pulse: no disk?"
       : status==GW_ACK_FLUXOVERFLOW ? "USB too slow: flux overflow"
-      : "error");
-    if(!ended)
-    { // resync the protocol
-      PurgeComm(gw->port,PURGE_RXCLEAR|PURGE_TXCLEAR);
-      Command(gw,GW_RESET,NULL,0);
-      Command1(gw,GW_SETBUSTYPE,gw->bus);
-      gw->selected=false;
-      gw->motor=false;
-      gw->cyl=-1;
-    }
+      : AckText(ack!=GW_ACK_OKAY ? ack : status));
+    if(!ended || status<0)
+      Recover(gw); // resync the protocol
     return 0;
   }
   std::vector<unsigned long long> flux,index;
