@@ -414,6 +414,10 @@ void run() {
   for(int d=0;d<2;d++)
     ImageHFE[d].BridgeMotorOff();
 #endif
+#if defined(SSE_GREASEWEAZLE_FLUX)
+  for(int d=0;d<2;d++)
+    ImageSCP[d].GwMotorOff();
+#endif
   REFRESH_STATUS_BAR;
 #if defined(SSE_420R5)
   UPDATE_STATUS_BAR_PART(SB_PART_MAIN);
@@ -1043,6 +1047,10 @@ void event_vbl_interrupt() {
   // a real drive: the disk may have been swapped (sets floppy_mediach)
   ImageHFE[DRIVE_A].BridgePoll();
   ImageHFE[DRIVE_B].BridgePoll();
+#endif
+#if defined(SSE_GREASEWEAZLE_FLUX)
+  ImageSCP[DRIVE_A].GwPoll();
+  ImageSCP[DRIVE_B].GwPoll();
 #endif
 #ifdef SHOW_DRAW_SPEED
   {

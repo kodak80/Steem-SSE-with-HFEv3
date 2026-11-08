@@ -27,6 +27,9 @@ struct TSCP_file_header, TSCP_TDH_TABLESTART, TSCP_track_header, TImageSCP
 #define SSESCP_H
 
 //#include "floppy_drive.h"
+#if defined(SSE_GREASEWEAZLE_FLUX)
+#include "greaseweazle_flux.h"
+#endif
 
 /*
 ; TRACK DATA = 16 BIT VALUE, TIME IN NANOSECONDS/25ns FOR ONE BIT CELL TIME
@@ -105,6 +108,27 @@ struct  TImageSCP:public TImageMfm {
   BYTE rev;
   BYTE Wobble;
   int units_rest;
+#if defined(SSE_GREASEWEAZLE_FLUX)
+  // Flux mode: a descriptor file (text starting with "GREASEWEAZLE") opens
+  // a real drive on a Greaseweazle instead of an image. Each track is read
+  // from the drive as raw flux (a few revolutions) the first time the ST
+  // wants it, and played like an SCP track. Read-only.
+  bool OpenGw(const char *descriptor,const char *path);
+  bool LoadGwTrack(BYTE side,BYTE track,bool reload);
+  void GwMotorOff(); // the emulated motor stopped
+  void GwPoll(); // every VBL: has the real disk been changed?
+  void GwDropTracks();
+  void GwDiskChanged(bool disk_in);
+  void *Gw; // GwFluxOpen() handle, NULL for an image file
+  struct TGwTrack {
+    TGwFluxRev Rev[GWFLUX_MAX_REVS];
+    int nRevs; // 0: not read yet
+    bool Tried; // read failed: don't keep trying while the ST retries
+  } *GwTracks; // 2 sides x cylinders
+  int GwCylinders,GwPollCount;
+  bool GwDiskIn,GwWP;
+  char GwError[256];
+#endif
 };
 
 #pragma pack(pop)

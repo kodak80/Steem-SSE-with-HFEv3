@@ -1056,6 +1056,10 @@ void agenda_fdc_motor_flag_off(int) {
   for(int d=0;d<2;d++)
     ImageHFE[d].BridgeMotorOff();
 #endif
+#if defined(SSE_GREASEWEAZLE_FLUX)
+  for(int d=0;d<2;d++)
+    ImageSCP[d].GwMotorOff();
+#endif
 }
 
 

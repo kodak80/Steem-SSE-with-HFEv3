@@ -58,6 +58,16 @@ void TImageSCP::Close() {
     if(TimeFromIndexPulse)
       free(TimeFromIndexPulse);
   }
+#if defined(SSE_GREASEWEAZLE_FLUX)
+  else if(Gw)
+  {
+    TRACE_LOG("SCP %d close Greaseweazle\n",Id);
+    GwFluxClose(Gw);
+    delete[] GwTracks;
+    if(TimeFromIndexPulse)
+      free(TimeFromIndexPulse);
+  }
+#endif
   Init();
 }
 
@@ -196,6 +206,14 @@ void TImageSCP::IncBitPosition() {
 void TImageSCP::Init() {
   fCurrentImage=NULL;
   TimeFromIndexPulse=NULL;
+#if defined(SSE_GREASEWEAZLE_FLUX)
+  Gw=NULL;
+  GwTracks=NULL;
+  GwCylinders=GwPollCount=0;
+  GwDiskIn=true;
+  GwWP=true;
+  GwError[0]=0;
+#endif
   N_SIDES=2;
   N_TRACKS=83; //max
   nBytes=DISK_BYTES_PER_TRACK; //not really pertinent (TODO?)
@@ -208,6 +226,10 @@ bool TImageSCP::LoadTrack(BYTE side,BYTE track,bool reload) {
   //ASSERT( side<2 && track<N_TRACKS ); // unique side may be 1
   if(side>=2 || track>=N_TRACKS)
     return ok; //no crash
+#if defined(SSE_GREASEWEAZLE_FLUX)
+  if(Gw)
+    return LoadGwTrack(side,track,reload);
+#endif
   BYTE trackn=track;
   if(N_SIDES==2) // general case
     trackn=track*2+side; 
@@ -322,6 +344,33 @@ bool TImageSCP::Open(char *path) {
   bool ok=false;
   //if(!SSEConfig.IsInit)    return ok;
   Close(); // make sure previous image is correctly closed
+#if defined(SSE_GREASEWEAZLE_FLUX)
+  {
+    // a flux-mode descriptor rather than an image?
+    FILE *f=fopen(path,"rb");
+    if(f)
+    {
+      char text[4096];
+      size_t n=fread(text,1,sizeof(text)-1,f);
+      fclose(f);
+      text[n]=0;
+      size_t sl=strlen(GREASEWEAZLE_FLUX_SIGNATURE);
+      if(n>=sl && !memcmp(text,GREASEWEAZLE_FLUX_SIGNATURE,sl))
+      {
+        if(OpenGw(text,path))
+        {
+          FloppyDrive[Id].MfmManager=this;
+          return true;
+        }
+        char err[256];
+        strcpy(err,GwError);
+        Close();
+        strcpy(GwError,err);
+        return false;
+      }
+    }
+  }
+#endif
   fCurrentImage=fopen(path,"rb");
   if(fCurrentImage) // image exists
   {
@@ -359,6 +408,170 @@ bool TImageSCP::Open(char *path) {
 
 void TImageSCP::SetImageWord(WORD /*position*/,WORD /*mfm_data*/) { // for compilation only
 }
+
+
+#if defined(SSE_GREASEWEAZLE_FLUX)
+
+bool TImageSCP::OpenGw(const char *descriptor,const char *path) {
+  // the log goes beside the descriptor: Greaseweazle-flux.scp -> .log
+  char log_path[1024];
+  strncpy(log_path,path,sizeof(log_path)-5);
+  log_path[sizeof(log_path)-5]=0;
+  char *dot=strrchr(log_path,'.');
+  char *slash=strrchr(log_path,SLASHCHAR);
+  if(dot && (!slash || dot>slash))
+    *dot=0;
+  strcat(log_path,".log");
+  Gw=GwFluxOpen(descriptor,log_path,GwError,sizeof(GwError));
+  if(!Gw)
+    return false;
+  GwCylinders=GwFluxCylinders(Gw);
+  GwTracks=new TGwTrack[GwCylinders*2];
+  for(int i=0;i<GwCylinders*2;i++)
+  {
+    GwTracks[i].nRevs=0;
+    GwTracks[i].Tried=false;
+  }
+  memset(&file_header,0,sizeof(file_header));
+  memcpy(file_header.IFF_ID,"SCP",3);
+  file_header.IFF_NUMREVS=1;
+  memset(&track_header,0,sizeof(track_header));
+  track_header.TDH_TRACKNUM=0xFF;
+  rev=0;
+  N_SIDES=2;
+  N_TRACKS=(BYTE)GwCylinders;
+  LowLevel=true;
+  GwDiskIn=true;
+  GwWP=true;
+  GwPollCount=0;
+  return true;
+}
+
+
+bool TImageSCP::LoadGwTrack(BYTE side,BYTE track,bool reload) {
+/*  The first time the ST wants a track, it's read from the drive (a few
+    revolutions, see GwFluxReadTrack); then it's played from memory, a
+    revolution after the other like an SCP image, until the disk changes.
+*/
+  if(side>=2 || track>=GwCylinders)
+    return false;
+  BYTE trackn=(BYTE)(track*2+side);
+  TGwTrack &t=GwTracks[trackn];
+  if(track_header.TDH_TRACKNUM==trackn && TimeFromIndexPulse && !rev
+    && (!reload || t.nRevs<=1))
+    return true;
+  if(!t.nRevs && !t.Tried)
+  {
+    t.nRevs=GwFluxReadTrack(Gw,side,track,t.Rev,GWFLUX_MAX_REVS);
+    t.Tried=true;
+  }
+  if(!reload)
+    units_rest=0;
+  if(TimeFromIndexPulse)
+    free(TimeFromIndexPulse);
+  TimeFromIndexPulse=NULL;
+  if(reload)
+    rev++;
+  else
+    rev=0;
+  int nrevs=t.nRevs ? t.nRevs : 1;
+  rev%=nrevs;
+  file_header.IFF_NUMREVS=(BYTE)nrevs;
+  track_header.TDH_TRACKNUM=trackn;
+  FloppyDisk[Id].current_side=side;
+  FloppyDisk[Id].current_track=track;
+  if(!t.nRevs)
+  {
+    // nothing read (no disk...): one transition a revolution, the FDC
+    // finds nothing, as with an unformatted track
+    TimeFromIndexPulse=(DWORD*)calloc(1,sizeof(DWORD));
+    if(!TimeFromIndexPulse)
+      return false;
+    TimeFromIndexPulse[0]=200000*GWFLUX_UNITS_PER_US;
+    nBits=1;
+    return true;
+  }
+  const TGwFluxRev &r=t.Rev[rev];
+  TimeFromIndexPulse=(DWORD*)calloc(r.size(),sizeof(DWORD));
+  if(!TimeFromIndexPulse)
+    return false;
+  // like an SCP image: a small random distance from the index (War Heli)
+  int units_from_ip=(reload||!SSEOptions.RandomizeTrack)?0:(rand()%0x16);
+  for(size_t i=0;i<r.size();i++)
+    TimeFromIndexPulse[i]=r[i]+units_from_ip;
+  nBits=(DWORD)r.size();
+  TRACE_LOG("SCP Greaseweazle side %d track %d rev %d/%d %d transitions\n",
+    side,track,rev+1,nrevs,nBits);
+  return true;
+}
+
+
+void TImageSCP::GwDropTracks() {
+  if(!GwTracks)
+    return;
+  for(int i=0;i<GwCylinders*2;i++)
+  {
+    for(int r=0;r<GWFLUX_MAX_REVS;r++)
+      TGwFluxRev().swap(GwTracks[i].Rev[r]);
+    GwTracks[i].nRevs=0;
+    GwTracks[i].Tried=false;
+  }
+  track_header.TDH_TRACKNUM=0xFF; // the next access loads again
+}
+
+
+void TImageSCP::GwMotorOff() {
+  if(!Gw)
+    return;
+  GwFluxMotorOff(Gw);
+  // tracks that couldn't be read are tried again next time
+  for(int i=0;i<GwCylinders*2;i++)
+    if(!GwTracks[i].nRevs)
+      GwTracks[i].Tried=false;
+}
+
+
+void TImageSCP::GwDiskChanged(bool disk_in) {
+  GwDropTracks();
+  GwDiskIn=disk_in;
+  GwFluxLogMessage(Gw,disk_in ? "disk inserted" : "disk removed");
+  if(Id<2)
+  {
+    // the ST sees a disk change as the write-protect signal changing
+    floppy_mediach[Id]=FLOPPY_MEDIACH_VBL;
+    FloppyDisk[Id].WriteProtect=true; // flux mode is read-only
+  }
+}
+
+
+void TImageSCP::GwPoll() {
+/*  Called every VBL (run.cpp), checks every 25 VBLs (half a second): the
+    disk-change line and the write-protect sensor. A disk swapped in the
+    drive is passed on to the ST, everything read from the old one dropped.
+*/
+  if(!Gw || ++GwPollCount<25)
+    return;
+  GwPollCount=0;
+  bool wp=GwWP;
+  int st=GwFluxPoll(Gw,&wp);
+  if(st==GWFLUX_POLL_NODISK && GwDiskIn)
+    GwDiskChanged(false);
+  else if(st==GWFLUX_POLL_NEWDISK || (st==GWFLUX_POLL_DISK && !GwDiskIn))
+    GwDiskChanged(true);
+  if(wp!=GwWP)
+  {
+    GwWP=wp;
+    GwFluxLogMessage(Gw,wp ? "write-protect on" : "write-protect off");
+    if(st==GWFLUX_POLL_UNKNOWN)
+    { // no disk-change line: the sensor changing may be a disk swap
+      GwDropTracks();
+      if(Id<2)
+        floppy_mediach[Id]=FLOPPY_MEDIACH_VBL;
+    }
+  }
+}
+
+#endif//SSE_GREASEWEAZLE_FLUX
 
 
 void TImageSCP::SetMfmData(WORD /*position*/, WORD /*mfm_data*/) {

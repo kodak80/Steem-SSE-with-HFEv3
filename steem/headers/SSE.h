@@ -261,6 +261,9 @@ compilation of about everything.
 #define SSE_EMU_THREAD // reduces hiccups
 #if defined(SSE_DISK_HFE)
 #define SSE_FLOPPYBRIDGE // real drive on a Greaseweazle etc. via FloppyBridge (HFE bridge mode)
+#if defined(SSE_DISK_SCP)
+#define SSE_GREASEWEAZLE_FLUX // real drive on a Greaseweazle read as raw flux (SCP flux mode)
+#endif
 #endif
 #define SSE_GEM_CONTROL_PANEL // fun!
 #define SSE_GUI_BIGICONS // for high DPI screens

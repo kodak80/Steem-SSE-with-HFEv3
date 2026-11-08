@@ -100,3 +100,29 @@ the run) are made weak too.
 Limits
 ------
 - Windows only.
+
+Flux mode (Greaseweazle-flux.scp)
+---------------------------------
+Some copy protections can't be read through FloppyBridge, because it
+decodes the disk into bits and keeps only a rough idea of the timing. Batman
+The Movie, for instance, has a sector written half 10% slower and half 10%
+faster than normal: through Greaseweazle.hfe it halts Steem.
+
+Greaseweazle-flux.scp reads the drive as raw flux instead - the time between
+every magnetic transition - and Steem's floppy controller decodes it like an
+SCP image, as a real ST would. Insert it like a disk image. It talks to the
+Greaseweazle directly, so FloppyBridge isn't needed for it.
+
+- Greaseweazle only (not DrawBridge or SuperCard Pro).
+- Read-only: the ST sees the disk write-protected. For writing, use
+  Greaseweazle.hfe.
+- Each track is read (2 revolutions by default, revs=) the first time the ST
+  wants it, then kept until the disk changes. Loading is a little slower
+  than through FloppyBridge.
+- Swapping disks: the drive's disk-change line (and write-protect sensor) is
+  checked twice a second, like with Greaseweazle.hfe.
+- Greaseweazle-flux.log, next to the descriptor, lists every track read,
+  with the sectors a simple decoder finds on it. A sector shown bad there
+  may still read fine on the emulated controller (protections).
+- Only one program can use the Greaseweazle at a time: close DiskFlashback
+  and eject Greaseweazle.hfe first.

@@ -2454,6 +2454,7 @@ rem del $(IntDir)main.obj
     </ClCompile>
     <ClCompile Include="..\..\steem\disk_ghost.cpp" />
     <ClCompile Include="..\..\steem\floppybridge_drive.cpp" />
+    <ClCompile Include="..\..\steem\greaseweazle_flux.cpp" />
     <ClCompile Include="..\..\Steem\glue.cpp" />
     <ClCompile Include="..\..\Steem\disk_hfe.cpp" />
     <ClCompile Include="..\..\steem\mem_browser.cpp">
@@ -3263,6 +3264,7 @@ rem del $(IntDir)main.obj
     <ClInclude Include="..\..\Steem\headers\glue.h" />
     <ClInclude Include="..\..\Steem\headers\disk_hfe.h" />
     <ClInclude Include="..\..\steem\headers\floppybridge_drive.h" />
+    <ClInclude Include="..\..\steem\headers\greaseweazle_flux.h" />
     <ClInclude Include="..\..\steem\headers\mmu.h" />
     <ClInclude Include="..\..\steem\headers\parameters.h" />
     <ClInclude Include="..\..\steem\headers\disk_scp.h" />

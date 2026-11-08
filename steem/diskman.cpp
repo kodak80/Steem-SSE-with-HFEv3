@@ -6685,7 +6685,19 @@ int TSF314::SetDisk(EasyStr FilePath,EasyStr CompressedDiskName,
   else if(SCP)
   {
     if(!ImageSCP[Id].Open(FilePath))
+    {
+#if defined(SSE_GREASEWEAZLE_FLUX)
+      // a Greaseweazle descriptor that couldn't open the real drive
+      if(ImageSCP[Id].GwError[0])
+        Alert(ImageSCP[Id].GwError,T("Greaseweazle (flux mode)"),
+          MB_ICONEXCLAMATION);
+#endif
       return FIMAGE_WRONGFORMAT;
+    }
+#if defined(SSE_GREASEWEAZLE_FLUX)
+    if(ImageSCP[Id].Gw)
+      disk.ReadOnly=true; // flux mode doesn't write to the disk
+#endif
     FloppyDisk[Id].TrackBytes=ImageSCP[Id].nBytes;
     ImageType.Manager=MNGR_WD1772;
     ImageType.Extension=EXT_SCP;

@@ -1,0 +1,17 @@
+GREASEWEAZLE
+; A real floppy drive for Steem, on a Greaseweazle, read as raw flux.
+; Insert this file in drive A: or B: like a disk image.
+; Each track is read from the drive as it really is (the times between the
+; magnetic transitions) and played to the emulated floppy controller like an
+; SCP image, so copy protections that depend on timing load as on a real ST
+; (Copylock, split bit-rate sectors as in Batman The Movie, fuzzy bits...).
+; Talks to the Greaseweazle directly: FloppyBridge isn't needed for this.
+; Read-only. For writing to the disk use Greaseweazle.hfe (FloppyBridge).
+; Close DiskFlashback, or release the drive from it, before inserting.
+
+port=auto             ; auto, or the serial port, eg COM5
+drive=A               ; A or B (PC cable, try B if nothing is read), 0-3 Shugart
+revs=2                ; revolutions read per track (1-5): more = slower loading,
+                      ; but more variety for fuzzy-bit protections
+tracks=82             ; cylinders the drive may seek to (40-84)
+log=on                ; on: what is read goes to Greaseweazle-flux.log, next to this file
