@@ -18,3 +18,5 @@ densel=auto           ; density select line (pin 2): auto = left alone, low, hig
                       ; (try low or high if some tracks read badly in Steem
                       ; but fine with the Greaseweazle tools)
 log=on                ; on: what is read goes to Greaseweazle-flux.log, next to this file
+dump=off              ; on: keep the raw flux of every track read, in the folder
+                      ; Greaseweazle-flux-dump next to this file (for diagnosis)

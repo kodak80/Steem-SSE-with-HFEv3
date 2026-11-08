@@ -259,6 +259,7 @@ enum {GW_ACK_OKAY=0,GW_ACK_BADCOMMAND=1,GW_ACK_NOINDEX=2,GW_ACK_NOTRK0=3,
 struct TGwFlux {
   HANDLE port;
   FILE *log;
+  char dump_dir[1024]; // dump=on: raw flux of each read kept there
   std::chrono::steady_clock::time_point t0;
   unsigned int sample_freq;
   int fw_major,fw_minor;
@@ -493,13 +494,14 @@ static void GetValue(const char *descriptor,const char *key,char *out,
 
 void *GwFluxOpen(const char *descriptor,const char *log_path,char *error,
   int error_size) {
-  char port[64],drive[16],log[16],revs[16],tracks[16],densel[16];
+  char port[64],drive[16],log[16],revs[16],tracks[16],densel[16],dump[16];
   GetValue(descriptor,"port",port,sizeof(port),"auto");
   GetValue(descriptor,"drive",drive,sizeof(drive),"A");
   GetValue(descriptor,"log",log,sizeof(log),"on");
   GetValue(descriptor,"revs",revs,sizeof(revs),"2");
   GetValue(descriptor,"tracks",tracks,sizeof(tracks),"82");
   GetValue(descriptor,"densel",densel,sizeof(densel),"auto");
+  GetValue(descriptor,"dump",dump,sizeof(dump),"off");
   TGwFlux *gw=new TGwFlux();
   gw->port=INVALID_HANDLE_VALUE;
   gw->t0=std::chrono::steady_clock::now();
@@ -525,6 +527,17 @@ void *GwFluxOpen(const char *descriptor,const char *log_path,char *error,
   {
     gw->bus=2;
     gw->unit=d-'0';
+  }
+  if(log_path && !strcmp(dump,"on"))
+  {
+    // beside the log: Greaseweazle-flux.log -> Greaseweazle-flux-dump
+    strncpy(gw->dump_dir,log_path,sizeof(gw->dump_dir)-20);
+    gw->dump_dir[sizeof(gw->dump_dir)-20]=0;
+    char *dot=strrchr(gw->dump_dir,'.');
+    if(dot)
+      *dot=0;
+    strcat(gw->dump_dir,"-dump");
+    CreateDirectoryA(gw->dump_dir,NULL);
   }
   if(log_path && strcmp(log,"off"))
   {
@@ -772,6 +785,35 @@ int GwFluxReadTrack(void *handle,int side,int track,TGwFluxRev *revs,
     return 0;
   }
   std::vector<unsigned long long> flux,index;
+  if(gw->dump_dir[0])
+  {
+    // the stream as received, after the sample frequency (4 bytes, LE);
+    // a new file for each read (trackNN.S.N.gwf)
+    for(int k=0;k<100;k++)
+    {
+      char name[1100];
+      snprintf(name,sizeof(name),"%s\\track%02d.%d.%d.gwf",gw->dump_dir,track,
+        side,k);
+      FILE *f=fopen(name,"rb");
+      if(f)
+      {
+        fclose(f);
+        continue;
+      }
+      f=fopen(name,"wb");
+      if(f)
+      {
+        unsigned char fq[4]={(unsigned char)gw->sample_freq,
+          (unsigned char)(gw->sample_freq>>8),
+          (unsigned char)(gw->sample_freq>>16),
+          (unsigned char)(gw->sample_freq>>24)};
+        fwrite(fq,1,4,f);
+        fwrite(stream.data(),1,stream.size(),f);
+        fclose(f);
+      }
+      break;
+    }
+  }
   if(!GwDecodeFluxStream(stream.data(),(int)stream.size(),flux,index))
   {
     Log(gw,"track %2d side %d: malformed flux stream",track,side);
