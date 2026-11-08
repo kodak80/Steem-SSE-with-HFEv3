@@ -148,35 +148,99 @@ int GwSplitRevolutions(const std::vector<unsigned long long> &flux,
 
 int GwFluxToBits(const TGwFluxRev &rev,unsigned int rev_units,
   unsigned char *mfm,int max_bytes) {
-/*  A plain PLL, good enough to find the sectors for the log: the emulated
-    WD1772 does its own decoding of the flux.
+/*  The WD1772's digital PLL, as Steem emulates it (TWD1772Dpll::GetNextBit,
+    from MAME), on the transitions converted to 8MHz cycles like the SCP
+    reader does (units/5, the rest carried over), without the random wobble:
+    what the ST would read, for the log.
 */
   memset(mfm,0,max_bytes);
   int nbits=0,maxbits=max_bytes*8;
-  double clock=2.0*GWFLUX_UNITS_PER_US,t=0;
-  unsigned int prev=0;
-  for(size_t i=0;i<rev.size() && rev[i]<=rev_units;i++)
+  static const unsigned char pha[8]={0xf,0x7,0x3,0x1,0,0,0,0};
+  static const unsigned char phs[8]={0,0,0,0,0x1,0x3,0x7,0xf};
+  static const unsigned char freqa[4][8]={{0xf,0x7,0x3,0x1,0,0,0,0},
+    {0x7,0x3,0x1,0,0,0,0,0},{0x7,0x3,0x1,0,0,0,0,0},{0,0,0,0,0,0,0,0}};
+  static const unsigned char freqs[4][8]={{0,0,0,0,0,0,0,0},
+    {0,0,0,0,0,0x1,0x3,0x7},{0,0,0,0,0,0x1,0x3,0x7},{0,0,0,0,0x1,0x3,0x7,0xf}};
+  unsigned int counter=0,increment=128,transition_time=0xffff;
+  unsigned char history=0x80,slot=0,phase_add=0,phase_sub=0,freq_add=0,
+    freq_sub=0;
+  long long ctime=0,latest=0,tm=0;
+  size_t ti=0;
+  unsigned int prev=0,rest=0;
+  long long t=0;
+  for(;;)
   {
-    t+=rev[i]-prev;
-    prev=rev[i];
-    int cells=(int)((t+clock/2)/clock);
-    if(cells<1)
-      cells=1;
-    double err=t-cells*clock;
-    nbits+=cells-1;
-    if(nbits>=maxbits)
-      break;
-    mfm[nbits/8]|=(unsigned char)(0x80>>(nbits%8));
-    nbits++;
-    if(cells<=4) // follow the speed, within 10%
+    while(ctime-latest>=0)
     {
-      clock+=err/cells*0.05;
-      if(clock<1.8*GWFLUX_UNITS_PER_US) clock=1.8*GWFLUX_UNITS_PER_US;
-      if(clock>2.2*GWFLUX_UNITS_PER_US) clock=2.2*GWFLUX_UNITS_PER_US;
+      if(ti>=rev.size() || rev[ti]>rev_units)
+        return nbits;
+      unsigned int u=rev[ti]-prev;
+      prev=rev[ti];
+      ti++;
+      unsigned int c=u/5;
+      rest+=u%5;
+      if(rest>5)
+      {
+        c++;
+        rest-=5;
+      }
+      t+=c;
+      latest=t;
     }
-    t=err*0.4;
+    long long when=latest;
+    for(;;)
+    {
+      long long etime=ctime+slot+1;
+      if(transition_time==0xffff && etime-when>=0)
+        transition_time=counter;
+      if(slot<8)
+      {
+        unsigned char mask=(unsigned char)(1<<slot);
+        if(phase_add&mask)
+          counter+=226;
+        else if(phase_sub&mask)
+          counter+=30;
+        else
+          counter+=increment;
+        if((freq_add&mask) && increment<140)
+          increment++;
+        else if((freq_sub&mask) && increment>117)
+          increment--;
+      }
+      else
+        counter+=increment;
+      slot++;
+      tm=etime;
+      if(counter&0x800)
+        break;
+    }
+    int bit=(transition_time!=0xffff);
+    if(bit)
+    {
+      int cslot=(transition_time>>8)&7;
+      phase_add=pha[cslot];
+      phase_sub=phs[cslot];
+      int way=(transition_time&0x400) ? 1 : 0;
+      if(history&0x80)
+        history=way ? 0x80 : 0x83;
+      else if(history&0x40)
+        history=way ? (history&2) : ((history&2)|1);
+      freq_add=freqa[history&3][cslot];
+      freq_sub=freqs[history&3][cslot];
+      history=way ? (unsigned char)((history>>1)|2) : (unsigned char)(history>>1);
+    }
+    else
+      phase_add=phase_sub=freq_add=freq_sub=0;
+    counter&=0x7ff;
+    ctime=tm;
+    transition_time=0xffff;
+    slot=0;
+    if(nbits>=maxbits)
+      return nbits;
+    if(bit)
+      mfm[nbits/8]|=(unsigned char)(0x80>>(nbits%8));
+    nbits++;
   }
-  return nbits<maxbits ? nbits : maxbits;
 }
 
 
@@ -698,6 +762,8 @@ int GwFluxReadTrack(void *handle,int side,int track,TGwFluxRev *revs,
   TFloppyBridgeCheck c;
   memset(&c,0,sizeof(c));
   double rev_ms=0;
+  int rev_ids[GWFLUX_MAX_REVS]={0},rev_good[GWFLUX_MAX_REVS]={0},
+    rev_bad[GWFLUX_MAX_REVS]={0};
   if(n && index.size()>=2)
   {
     rev_ms=(index[1]-index[0])*1000.0/gw->sample_freq;
@@ -706,6 +772,19 @@ int GwFluxReadTrack(void *handle,int side,int track,TGwFluxRev *revs,
     static unsigned char mfm[32768];
     int nbits=GwFluxToBits(revs[0],rev_units,mfm,sizeof(mfm));
     FloppyBridgeCheckTrack(mfm,nbits,c);
+    // the other revolutions, for the log if they differ
+    for(int r=1;r<n;r++)
+    {
+      TFloppyBridgeCheck cr;
+      nbits=GwFluxToBits(revs[r],rev_units,mfm,sizeof(mfm));
+      FloppyBridgeCheckTrack(mfm,nbits,cr);
+      rev_ids[r]=cr.ids;
+      rev_good[r]=cr.good;
+      rev_bad[r]=cr.bad+cr.bad_ids;
+    }
+    rev_ids[0]=c.ids;
+    rev_good[0]=c.good;
+    rev_bad[0]=c.bad+c.bad_ids;
   }
   // sectors of another track: the head isn't where we thought (some
   // protections number their sectors oddly: only one try)
@@ -748,13 +827,26 @@ int GwFluxReadTrack(void *handle,int side,int track,TGwFluxRev *revs,
             c.bad_list[k]);
         len+=snprintf(line+len,sizeof(line)-len,")");
       }
-      if(c.bad)
-        len+=snprintf(line+len,sizeof(line)-len,
-          " - by this log's simple decoder; the emulated FDC decodes the flux itself");
+      if(c.bad_ids)
+        len+=snprintf(line+len,sizeof(line)-len,", %d bad ID CRC",c.bad_ids);
     }
     else
       len+=snprintf(line+len,sizeof(line)-len," nothing (unformatted?)");
     Log(gw,"%s",line);
+    // revolutions that don't read the same (decoded like the ST's WD1772)
+    bool differ=false;
+    for(int r=1;r<n;r++)
+      if(rev_ids[r]!=rev_ids[0] || rev_good[r]!=rev_good[0]
+        || rev_bad[r]!=rev_bad[0])
+        differ=true;
+    if(differ || rev_bad[0])
+    {
+      len=snprintf(line,sizeof(line),"          revolutions (IDs/data OK/bad):");
+      for(int r=0;r<n;r++)
+        len+=snprintf(line+len,sizeof(line)-len," %d/%d/%d",rev_ids[r],
+          rev_good[r],rev_bad[r]);
+      Log(gw,"%s",line);
+    }
   }
   return n;
 }
