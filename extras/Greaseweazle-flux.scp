@@ -14,4 +14,7 @@ drive=A               ; A or B (PC cable, try B if nothing is read), 0-3 Shugart
 revs=2                ; revolutions read per track (1-5): more = slower loading,
                       ; but more variety for fuzzy-bit protections
 tracks=82             ; cylinders the drive may seek to (40-84)
+densel=auto           ; density select line (pin 2): auto = left alone, low, high
+                      ; (try low or high if some tracks read badly in Steem
+                      ; but fine with the Greaseweazle tools)
 log=on                ; on: what is read goes to Greaseweazle-flux.log, next to this file

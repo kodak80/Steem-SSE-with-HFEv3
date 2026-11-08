@@ -252,7 +252,7 @@ int GwFluxToBits(const TGwFluxRev &rev,unsigned int rev_units,
 
 enum {GW_GETINFO=0,GW_SEEK=2,GW_HEAD=3,GW_SETPARAMS=4,GW_GETPARAMS=5,
   GW_MOTOR=6,GW_READFLUX=7,GW_GETFLUXSTATUS=9,GW_SELECT=12,GW_DESELECT=13,
-  GW_SETBUSTYPE=14,GW_RESET=16,GW_GETPIN=20,GW_NOCLICKSTEP=22};
+  GW_SETBUSTYPE=14,GW_SETPIN=15,GW_RESET=16,GW_GETPIN=20,GW_NOCLICKSTEP=22};
 enum {GW_ACK_OKAY=0,GW_ACK_BADCOMMAND=1,GW_ACK_NOINDEX=2,GW_ACK_NOTRK0=3,
   GW_ACK_FLUXOVERFLOW=4};
 
@@ -264,6 +264,7 @@ struct TGwFlux {
   int fw_major,fw_minor;
   int unit; // drive select line
   int bus;  // 1 = IBM PC, 2 = Shugart
+  int densel; // pin 2 (density select): -1 = left alone, 0 = low, 1 = high
   int revs,cylinders;
   int cyl; // where the head is (-1: unknown)
   bool motor,selected;
@@ -360,10 +361,22 @@ static const char *AckText(int ack) {
 
 
 // back to a known state: bus reset (motor off, drive deselected)
+static void SetDensel(TGwFlux *gw) {
+  if(gw->densel<0)
+    return;
+  unsigned char p[2]={2,(unsigned char)gw->densel};
+  int ack=Command(gw,GW_SETPIN,p,2);
+  if(ack!=GW_ACK_OKAY)
+    Log(gw,"density select (pin 2) %s refused: %s",gw->densel?"high":"low",
+      AckText(ack));
+}
+
+
 static void Recover(TGwFlux *gw) {
   PurgeComm(gw->port,PURGE_RXCLEAR|PURGE_TXCLEAR);
   Command(gw,GW_RESET,NULL,0);
   Command1(gw,GW_SETBUSTYPE,gw->bus);
+  SetDensel(gw);
   gw->selected=false;
   gw->motor=false;
   gw->cyl=-1;
@@ -480,12 +493,13 @@ static void GetValue(const char *descriptor,const char *key,char *out,
 
 void *GwFluxOpen(const char *descriptor,const char *log_path,char *error,
   int error_size) {
-  char port[64],drive[16],log[16],revs[16],tracks[16];
+  char port[64],drive[16],log[16],revs[16],tracks[16],densel[16];
   GetValue(descriptor,"port",port,sizeof(port),"auto");
   GetValue(descriptor,"drive",drive,sizeof(drive),"A");
   GetValue(descriptor,"log",log,sizeof(log),"on");
   GetValue(descriptor,"revs",revs,sizeof(revs),"2");
   GetValue(descriptor,"tracks",tracks,sizeof(tracks),"82");
+  GetValue(descriptor,"densel",densel,sizeof(densel),"auto");
   TGwFlux *gw=new TGwFlux();
   gw->port=INVALID_HANDLE_VALUE;
   gw->t0=std::chrono::steady_clock::now();
@@ -493,6 +507,11 @@ void *GwFluxOpen(const char *descriptor,const char *log_path,char *error,
   gw->revs=atoi(revs);
   if(gw->revs<1) gw->revs=1;
   if(gw->revs>GWFLUX_MAX_REVS) gw->revs=GWFLUX_MAX_REVS;
+  gw->densel=-1;
+  if(!strcmp(densel,"low") || !strcmp(densel,"l") || !strcmp(densel,"0"))
+    gw->densel=0;
+  else if(!strcmp(densel,"high") || !strcmp(densel,"h") || !strcmp(densel,"1"))
+    gw->densel=1;
   gw->cylinders=atoi(tracks);
   if(gw->cylinders<40) gw->cylinders=40;
   if(gw->cylinders>84) gw->cylinders=84;
@@ -518,8 +537,8 @@ void *GwFluxOpen(const char *descriptor,const char *log_path,char *error,
       fprintf(gw->log,"\n---- %s inserted ----\n",when);
     }
   }
-  Log(gw,"Steem Greaseweazle flux log - port=%s drive=%s revs=%d tracks=%d",
-    port,drive,gw->revs,gw->cylinders);
+  Log(gw,"Steem Greaseweazle flux log - port=%s drive=%s revs=%d tracks=%d densel=%s",
+    port,drive,gw->revs,gw->cylinders,densel);
   char name[80];
   if(!strcmp(port,"auto") || !port[0])
   {
@@ -591,6 +610,7 @@ void *GwFluxOpen(const char *descriptor,const char *log_path,char *error,
     GwFluxClose(gw);
     return NULL;
   }
+  SetDensel(gw);
   Select(gw,true);
   int chg=(gw->bus==1) ? GetPin(gw,34) : -1;
   int wp=GetPin(gw,28);
