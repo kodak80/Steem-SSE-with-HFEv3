@@ -259,8 +259,11 @@ bool TImageSCP::LoadTrack(BYTE side,BYTE track,bool reload) {
     FloppyDisk[Id].current_track=track;
     return true;
   }
+  // already loaded: carry on with the revolution playing, like a real disk
+  // turning (each read sees the next revolution, not the first again: a
+  // fuzzy sector must read differently twice, Dungeon Master)
   if(track_header.TDH_TRACKNUM==trackn //already loaded
-    && !rev && (!reload||file_header.IFF_NUMREVS==1))
+    && TimeFromIndexPulse && (!reload||file_header.IFF_NUMREVS==1))
     return true;
   if(!reload)
     units_rest=0;
@@ -526,7 +529,8 @@ bool TImageSCP::LoadGwTrack(BYTE side,BYTE track,bool reload) {
     return false;
   BYTE trackn=(BYTE)(track*2+side);
   TGwTrack &t=GwTracks[trackn];
-  if(track_header.TDH_TRACKNUM==trackn && TimeFromIndexPulse && !rev
+  // already loaded: carry on with the revolution playing (see LoadTrack)
+  if(track_header.TDH_TRACKNUM==trackn && TimeFromIndexPulse
     && (!reload || t.nRevs<=1))
     return true;
   unsigned int now=(unsigned int)std::chrono::duration_cast<std::chrono::milliseconds>(
