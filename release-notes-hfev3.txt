@@ -6,6 +6,46 @@ branch (r1511), adding support for HFE v3 floppy images ("HXCHFEV3", as
 written by the HxC Floppy Emulator software and used by FlashFloppy and HxC
 hardware). Source: https://github.com/kodak80/Steem-SSE-with-HFEv3
 
+What's new in HFEv3-9
+- Sectors spanning the index: on tracks with 11 sectors (Blasteroids) the
+  last sector runs across the index hole into the next revolution. Steem
+  lost a few microseconds at the join between two revolutions and that
+  sector came out corrupted on every track, so the game crashed. Fixed in
+  flux mode and for SCP images.
+- Each read now sees the next revolution, as on a real disk, instead of
+  going back to the first one every time. Dungeon Master's protection reads
+  its fuzzy sector twice and needs the two reads to differ: in flux mode
+  the gate out of the Hall of Champions now opens reliably, without
+  depending on the "Fuzzy bits" option.
+- The flux log decodes each track across into the next revolution, so a
+  sector spanning the index is no longer reported bad.
+  Confirmed: Blasteroids disks A and B (flux mode), Dungeon Master
+  original (flux mode), Batman The Movie, Total Recall.
+- Known limit: Dungeon Master booted from an SCP file still doesn't open
+  the gate (it does from the real disk, in both modes).
+
+What's new in HFEv3-8
+- Greaseweazle flux mode: a new way to use a real floppy drive, next to
+  Greaseweazle.hfe. Insert Greaseweazle-flux.scp like a disk image: each
+  track is read from the drive as raw flux (the time between every magnetic
+  transition) and Steem's floppy controller decodes it like an SCP image,
+  as a real ST would. Copy protections that depend on timing now load from
+  the real disk, including ones FloppyBridge can't pass on: Batman The
+  Movie (a sector written half 10% slow, half 10% fast).
+  Greaseweazle only, read-only (use Greaseweazle.hfe to write), and it
+  talks to the Greaseweazle directly - FloppyBridge isn't needed for it.
+  Disk swaps are seen (disk-change line, write-protect sensor); a reset of
+  the ST reads the disk again; the log (Greaseweazle-flux.log) decodes each
+  track like the ST's controller and shows every revolution.
+  Settings: port=, drive=, revs= (passes per track, default 2), tracks=,
+  densel= (density select line), dump= (keep the raw flux, for diagnosis).
+  Confirmed: Batman The Movie, Total Recall disks 1 and 2 (Copylock, disk
+  swap), Dungeon Master original, Super Cars 2.
+- SCP images: single-sided dumps written by the Greaseweazle tools now load
+  (they number tracks cylinder*2+head; Steem read them one after the other
+  and stopped at track 1). A track missing from an SCP image now reads as
+  unformatted.
+
 What's new in HFEv3-7
 - Fuzzy bits from real disks (Greaseweazle / FloppyBridge): Dungeon Master
   originals now pass their protection - the gate out of the Hall of
