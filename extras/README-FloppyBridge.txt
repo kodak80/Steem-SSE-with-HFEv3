@@ -126,3 +126,8 @@ Greaseweazle directly, so FloppyBridge isn't needed for it.
   may still read fine on the emulated controller (protections).
 - Only one program can use the Greaseweazle at a time: close DiskFlashback
   and eject Greaseweazle.hfe first.
+- densel= sets the drive's density select line (pin 2) if a drive reads
+  double-density disks badly with it left alone. dump=on keeps the raw flux
+  of every track read in Greaseweazle-flux-dump (for diagnosis).
+- Tracks that read badly on one side only, with errors that change from one
+  revolution to the next, usually mean a dirty head: clean the drive.
