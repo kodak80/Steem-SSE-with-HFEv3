@@ -116,7 +116,7 @@ bool GwDecodeFluxStream(const unsigned char *s,int n,
 
 int GwSplitRevolutions(const std::vector<unsigned long long> &flux,
   const std::vector<unsigned long long> &index,unsigned int sample_freq,
-  TGwFluxRev *revs,int max_revs) {
+  TGwFluxRev *revs,unsigned int *rev_len,int max_revs) {
   if(!sample_freq)
     return 0;
   int n=0;
@@ -135,11 +135,11 @@ int GwSplitRevolutions(const std::vector<unsigned long long> &flux,
         /sample_freq));
       g++;
     }
-    if(g<flux.size()) // continuity: first transition of the next revolution
-      rev.push_back((unsigned int)((flux[g]-start)*(GWFLUX_UNITS_PER_US*1000000ull)
-        /sample_freq));
     if(rev.size()<100)
       continue; // nothing there (no disk, unformatted)
+    if(rev_len)
+      rev_len[n]=(unsigned int)((end-start)*(GWFLUX_UNITS_PER_US*1000000ull)
+        /sample_freq);
     n++;
   }
   return n;
@@ -240,6 +240,41 @@ int GwFluxToBits(const TGwFluxRev &rev,unsigned int rev_units,
     if(bit)
       mfm[nbits/8]|=(unsigned char)(0x80>>(nbits%8));
     nbits++;
+  }
+}
+
+
+void GwFluxCheckRev(const TGwFluxRev *revs,const unsigned int *rev_len,int n,
+  int r,TFloppyBridgeCheck &c) {
+/*  The revolution alone gives the IDs; for the data, the revolution is
+    followed by the start of the next one (as the drive turns), and only
+    the sectors whose ID is in the first revolution are counted.
+*/
+  static unsigned char mfm[65536];
+  memset(&c,0,sizeof(c));
+  if(r<0 || r>=n)
+    return;
+  int nbits1=GwFluxToBits(revs[r],rev_len[r],mfm,sizeof(mfm));
+  TFloppyBridgeCheck one;
+  FloppyBridgeCheckTrack(mfm,nbits1,one);
+  const TGwFluxRev &next=revs[(r+1)%n];
+  TGwFluxRev both(revs[r]);
+  unsigned int quarter=rev_len[r]/4; // enough for a sector across the index
+  for(size_t i=0;i<next.size() && next[i]<quarter;i++)
+    both.push_back(next[i]+rev_len[r]);
+  int nbits=GwFluxToBits(both,rev_len[r]+quarter,mfm,sizeof(mfm));
+  TFloppyBridgeCheck two;
+  FloppyBridgeCheckTrack(mfm,nbits,two);
+  c=one;
+  c.good=c.bad=0;
+  for(int k=0;k<two.secs && k<FLOPPYBRIDGE_CHECK_MAX;k++)
+  {
+    if(two.sec_id_pos[k]>=nbits1)
+      continue;
+    if(two.sec_good[k])
+      c.good++;
+    else if(c.bad<FLOPPYBRIDGE_CHECK_MAX)
+      c.bad_list[c.bad++]=two.sec_id[k];
   }
 }
 
@@ -682,7 +717,7 @@ void GwFluxMotorOff(void *handle) {
 
 
 int GwFluxReadTrack(void *handle,int side,int track,TGwFluxRev *revs,
-  int max_revs) {
+  unsigned int *rev_len,int max_revs) {
   TGwFlux *gw=(TGwFlux*)handle;
   if(!gw || track<0 || track>=gw->cylinders)
     return 0;
@@ -819,7 +854,7 @@ int GwFluxReadTrack(void *handle,int side,int track,TGwFluxRev *revs,
     Log(gw,"track %2d side %d: malformed flux stream",track,side);
     return 0;
   }
-  int n=GwSplitRevolutions(flux,index,gw->sample_freq,revs,nrevs);
+  int n=GwSplitRevolutions(flux,index,gw->sample_freq,revs,rev_len,nrevs);
   // what the ST would find on the first revolution
   TFloppyBridgeCheck c;
   memset(&c,0,sizeof(c));
@@ -829,17 +864,12 @@ int GwFluxReadTrack(void *handle,int side,int track,TGwFluxRev *revs,
   if(n && index.size()>=2)
   {
     rev_ms=(index[1]-index[0])*1000.0/gw->sample_freq;
-    unsigned int rev_units=(unsigned int)((index[1]-index[0])
-      *(GWFLUX_UNITS_PER_US*1000000ull)/gw->sample_freq);
-    static unsigned char mfm[32768];
-    int nbits=GwFluxToBits(revs[0],rev_units,mfm,sizeof(mfm));
-    FloppyBridgeCheckTrack(mfm,nbits,c);
+    GwFluxCheckRev(revs,rev_len,n,0,c);
     // the other revolutions, for the log if they differ
     for(int r=1;r<n;r++)
     {
       TFloppyBridgeCheck cr;
-      nbits=GwFluxToBits(revs[r],rev_units,mfm,sizeof(mfm));
-      FloppyBridgeCheckTrack(mfm,nbits,cr);
+      GwFluxCheckRev(revs,rev_len,n,r,cr);
       rev_ids[r]=cr.ids;
       rev_good[r]=cr.good;
       rev_bad[r]=cr.bad+cr.bad_ids;
@@ -856,7 +886,7 @@ int GwFluxReadTrack(void *handle,int side,int track,TGwFluxRev *revs,
       track,side,c.id_track);
     gw->cyl=-1;
     gw->rereading=true;
-    int r=GwFluxReadTrack(gw,side,track,revs,max_revs);
+    int r=GwFluxReadTrack(gw,side,track,revs,rev_len,max_revs);
     gw->rereading=false;
     return r;
   }
@@ -965,7 +995,7 @@ void *GwFluxOpen(const char*,const char*,char *error,int error_size) {
 void GwFluxClose(void*) {}
 int GwFluxRevs(void*) { return 0; }
 int GwFluxCylinders(void*) { return 0; }
-int GwFluxReadTrack(void*,int,int,TGwFluxRev*,int) { return 0; }
+int GwFluxReadTrack(void*,int,int,TGwFluxRev*,unsigned int*,int) { return 0; }
 void GwFluxMotorOff(void*) {}
 int GwFluxPoll(void*,bool*) { return GWFLUX_POLL_UNKNOWN; }
 void GwFluxLogMessage(void*,const char*) {}

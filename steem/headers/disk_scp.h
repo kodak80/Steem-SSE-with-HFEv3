@@ -110,6 +110,10 @@ struct  TImageSCP:public TImageMfm {
   // single-sided image: -1 = tracks stored one after the other, 0/1 = the
   // head whose tracks are at cylinder*2+head (as Greaseweazle writes them)
   signed char SingleHead;
+  // time from the last transition of the revolution loaded to its index:
+  // the next revolution starts that much later (a sector spanning the index
+  // is played across without a glitch)
+  DWORD RevTail;
   int units_rest;
 #if defined(SSE_GREASEWEAZLE_FLUX)
   // Flux mode: a descriptor file (text starting with "GREASEWEAZLE") opens
@@ -125,6 +129,7 @@ struct  TImageSCP:public TImageMfm {
   void *Gw; // GwFluxOpen() handle, NULL for an image file
   struct TGwTrack {
     TGwFluxRev Rev[GWFLUX_MAX_REVS];
+    unsigned int RevLen[GWFLUX_MAX_REVS]; // index to index, SCP units
     int nRevs; // 0: not read yet
     bool Tried; // read failed: don't keep trying while the ST retries...
     unsigned int TriedAt; // ...for 2 seconds (ms)

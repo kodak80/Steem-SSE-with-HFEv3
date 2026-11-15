@@ -222,6 +222,7 @@ void TImageSCP::Init() {
   nBytes=DISK_BYTES_PER_TRACK; //not really pertinent (TODO?)
   Wobble=5;
   SingleHead=-1;
+  RevTail=0;
 }
 
 
@@ -295,6 +296,12 @@ bool TImageSCP::LoadTrack(BYTE side,BYTE track,bool reload) {
       //int units_from_ip=reload?0:(rand()%0x20);
       int units_from_ip=(reload||!SSEOptions.RandomizeTrack)?0:(rand()%0x16); // TODO
       //ASSERT(!units_from_ip);
+      // the next revolution: its first transition is timed from the last
+      // one of the revolution before (UnitsToNextFlux), add the time that
+      // was left to the index (sectors spanning the index, 11-sector tracks)
+      if(reload)
+        units_from_ip=RevTail;
+      int start_units=units_from_ip;
       nBits=0;
       // convert to time after IP, one data per bit (SLOW)
       WORD data=0;
@@ -349,6 +356,18 @@ bool TImageSCP::LoadTrack(BYTE side,BYTE track,bool reload) {
           }
         }
         TRACE_LOG("SCP %d-%d last flux %d\n",side,track,TimeFromIndexPulse[nBits-1]);
+      }
+      RevTail=0;
+      if(data && nBits)
+      {
+        DWORD last=TimeFromIndexPulse[nBits-1]-start_units;
+        DWORD duration=track_header.TDH_TABLESTART[rev].TDH_DURATION;
+        if(duration>last && duration-last<40*200) // < 200us, else unreliable
+          RevTail=duration-last;
+        // a single revolution plays after itself: shift it now
+        if(file_header.IFF_NUMREVS==1)
+          for(DWORD i=0;i<nBits;i++)
+            TimeFromIndexPulse[i]+=RevTail;
       }
       free(flux_to_flux_units_table_16bit);
       ok=true;
@@ -514,7 +533,7 @@ bool TImageSCP::LoadGwTrack(BYTE side,BYTE track,bool reload) {
     std::chrono::steady_clock::now().time_since_epoch()).count();
   if(!t.nRevs && (!t.Tried || now-t.TriedAt>2000))
   {
-    t.nRevs=GwFluxReadTrack(Gw,side,track,t.Rev,GWFLUX_MAX_REVS);
+    t.nRevs=GwFluxReadTrack(Gw,side,track,t.Rev,t.RevLen,GWFLUX_MAX_REVS);
     t.Tried=true;
     t.TriedAt=now;
   }
@@ -553,8 +572,18 @@ bool TImageSCP::LoadGwTrack(BYTE side,BYTE track,bool reload) {
     return false;
   // like an SCP image: a small random distance from the index (War Heli)
   int units_from_ip=(reload||!SSEOptions.RandomizeTrack)?0:(rand()%0x16);
+  // The first transition is timed from the last one before (UnitsToNextFlux
+  // takes TimeFromIndexPulse[0] as the gap), so the time from the last
+  // transition of the revolution played before to its index is added: a
+  // sector spanning the index (11 sectors a track, Blasteroids) is played
+  // across without a glitch. A few microseconds, nothing for the position.
+  int prev=(rev+nrevs-1)%nrevs;
+  const TGwFluxRev &p=t.Rev[prev];
+  unsigned int tail=0;
+  if(p.size() && t.RevLen[prev]>p.back())
+    tail=t.RevLen[prev]-p.back();
   for(size_t i=0;i<r.size();i++)
-    TimeFromIndexPulse[i]=r[i]+units_from_ip;
+    TimeFromIndexPulse[i]=r[i]+tail+units_from_ip;
   nBits=(DWORD)r.size();
   if(BitPosition>=nBits) // the track before was longer
     BitPosition=0;

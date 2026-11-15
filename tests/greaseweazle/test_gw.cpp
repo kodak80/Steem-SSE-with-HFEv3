@@ -80,13 +80,14 @@ int main(){
   bool ok=GwDecodeFluxStream(s.data(),(int)s.size(),f,ix);
   CHECK(ok && ix.size()==4,"track: 4 index pulses (%d)",(int)ix.size());
   TGwFluxRev revs[GWFLUX_MAX_REVS];
-  int n=GwSplitRevolutions(f,ix,freq,revs,GWFLUX_MAX_REVS);
+  unsigned int lens[GWFLUX_MAX_REVS]={0};
+  int n=GwSplitRevolutions(f,ix,freq,revs,lens,GWFLUX_MAX_REVS);
   CHECK(n==3,"track: 3 revolutions (%d)",n);
   int ones=0; for(int b:m.bits) ones+=b;
-  CHECK(n==3 && abs((int)revs[1].size()-ones-1)<=1,"track: transitions per rev %d vs %d (+1 for continuity)",(int)revs[1].size(),ones);
+  CHECK(n==3 && abs((int)revs[1].size()-ones)<=1,"track: transitions per rev %d vs %d",(int)revs[1].size(),ones);
   unsigned rev_units=(unsigned)((ix[1]-ix[0])*40000000ull/freq);
   CHECK(abs((int)rev_units-(int)(rev_time*40e6))<=2,"track: rev %u units",rev_units);
-  CHECK(n==3 && revs[0].back()>rev_units,"track: last transition after the next index");
+  CHECK(n==3 && abs((int)lens[0]-(int)rev_units)<=1 && revs[0].back()<=lens[0],"track: length %u, last transition before the next index",lens[0]);
   bool increasing=true; for(size_t i=1;i<revs[0].size();i++) if(revs[0][i]<=revs[0][i-1]) increasing=false;
   CHECK(increasing,"track: times increase");
   static BYTE mfm[32768];
@@ -100,6 +101,51 @@ int main(){
     for(size_t i=0;i<a.bits.size();i++){ double c2=(i>20000&&i<24000)?2.2:(i>=24000&&i<28000)?1.8:2.0; tt+=c2*40; if(a.bits[i]) r.push_back((unsigned)tt); }
     int nb2=GwFluxToBits(r,(unsigned)tt,mfm,sizeof(mfm)); TFloppyBridgeCheck c2; FloppyBridgeCheckTrack(mfm,nb2,c2);
     CHECK(c2.ids==10,"split rate: all IDs found (%d)",c2.ids);
+  }
+  // 4. 11 sectors, the last one across the index: played across the join
+  //    the way disk_scp does (the gap to the index added to the next rev)
+  { Mfm m; m.Fill(0x4E,10);
+    for(int s=1;s<=11;s++){
+      m.Fill(0,3); m.Sync();m.Sync();m.Sync();
+      std::vector<int> id={0xA1,0xA1,0xA1,0xFE,0,0,s,2}; WORD c=Crc(id);
+      for(int k=3;k<8;k++) m.Byte(id[k]); m.Byte(c>>8); m.Byte(c&0xFF);
+      m.Fill(0x4E,3); m.Fill(0,3); m.Sync();m.Sync();m.Sync();
+      std::vector<int> d={0xA1,0xA1,0xA1,0xFB}; for(int i=0;i<512;i++) d.push_back((i*5+s)&0xFF);
+      c=Crc(d); for(size_t k=3;k<d.size();k++) m.Byte(d[k]); m.Byte(c>>8); m.Byte(c&0xFF);
+      m.Fill(0x4E,8);
+    }
+    // a revolution is 100000 cells: rotate so the index falls inside sector 11's data
+    std::vector<int> bits=m.bits; int len=100000;
+    CHECK((int)bits.size()<len,"11 sectors fit (%d bits)",(int)bits.size());
+    while((int)bits.size()<len) bits.push_back(bits.size()&1); // 4E-like filler... keep simple
+    for(int i=(int)m.bits.size();i<len;i++) bits[i]=(i%2==0); // clock-only gap
+    int cut=(int)m.bits.size()-400; // index 400 cells before the end of sector 11
+    std::vector<int> rot(len); for(int i=0;i<len;i++) rot[i]=bits[(i+cut)%len];
+    // stream: 3 revolutions + lead-in, 72MHz, ideal timing
+    std::vector<BYTE> st; double prevt=-0.0101; int nip=0;
+    std::vector<double> tr; for(int r=-1;r<=3;r++) for(int i=0;i<len;i++) if(rot[i]){ double tt=(r*len+i)*2e-6; if(tt>=-0.01 && tt<3*len*2e-6+0.0005) tr.push_back(tt);} 
+    for(double tt:tr){ while(nip<=3 && nip*len*2e-6<tt){ Put28(st,1,(unsigned)((nip*len*2e-6-prevt)*freq)); nip++; }
+      unsigned v=(unsigned)llround((tt-prevt)*freq); prevt+=v/(double)freq; Put(st,v); }
+    std::vector<unsigned long long> f2,ix2; GwDecodeFluxStream(st.data(),(int)st.size(),f2,ix2);
+    TGwFluxRev rv[GWFLUX_MAX_REVS]; unsigned int ln[GWFLUX_MAX_REVS];
+    int n2=GwSplitRevolutions(f2,ix2,freq,rv,ln,GWFLUX_MAX_REVS);
+    CHECK(n2==3,"11 sectors: 3 revs (%d, %d index, %d flux, %d bits)",n2,(int)ix2.size(),(int)f2.size(),(int)m.bits.size()); fflush(stdout); if(n2<2) return 1;
+    TFloppyBridgeCheck c3; GwFluxCheckRev(rv,ln,n2,0,c3);
+    CHECK(c3.ids==11 && c3.good==11 && c3.bad==0,"11 sectors: log check across the index (ids %d good %d bad %d)",c3.ids,c3.good,c3.bad);
+    // play rev 0 then rev 1 like disk_scp: gaps from TimeFromIndexPulse
+    TGwFluxRev play; unsigned int t=0;
+    for(unsigned x:rv[0]) play.push_back(x);
+    unsigned tail=ln[0]-rv[0].back(); unsigned base=rv[0].back();
+    for(unsigned x:rv[1]) play.push_back(base+x+tail);
+    unsigned base2=play.back(), tail2=ln[1]-rv[1].back();
+    for(unsigned x:rv[2]) if(x<ln[2]/4) play.push_back(base2+x+tail2);
+    int nb3=GwFluxToBits(play,play.back()+1,mfm,sizeof(mfm)); TFloppyBridgeCheck c4; FloppyBridgeCheckTrack(mfm,nb3,c4);
+    int newbad=c4.bad,newgood=c4.good; // the last one is cut where the stream ends
+    // the old way (no tail): sector 11 broken
+    TGwFluxRev old; for(unsigned x:rv[0]) old.push_back(x); for(unsigned x:rv[1]) old.push_back(base+x);
+    unsigned b2=old.back(); for(unsigned x:rv[2]) if(x<ln[2]/4) old.push_back(b2+x);
+    nb3=GwFluxToBits(old,old.back()+1,mfm,sizeof(mfm)); FloppyBridgeCheckTrack(mfm,nb3,c4);
+    CHECK(newbad==1 && newgood==24 && c4.bad==3,"11 sectors: across two joins: bad %d (only the cut end) vs %d without the gap to the index",newbad,c4.bad);
   }
   printf("%d checks, %d failures\n",checks,fails);
   return fails?1:0;
