@@ -33,6 +33,7 @@ right sample, and is mixed into the sound buffer in SoundVBL().
 
 #include <isa_picogus.h>
 #include <emulator.h>
+#include <computer.h> // Glue
 #include <sound.h>
 #include <run.h>
 #include <gui.h>
