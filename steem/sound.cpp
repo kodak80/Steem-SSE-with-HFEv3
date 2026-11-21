@@ -1403,21 +1403,34 @@ void WriteSoundLoop(int Alter_V, int* Out_P,int Size,DWORD& c,int &val,
     }
 #if defined(SSE_SOUND_CARTRIDGE)
     else if(SSEConfig.mv16||SSEConfig.mr16)
-    { // B.A.T's MV16 cartridge, Action Replay 16, no PSG
+    { // B.A.T's MV16 cartridge, Action Replay 16
+      // The cartridge has its own audio output, the YM keeps playing
+      // through the monitor: mix both (was cartridge only, no PSG).
       //int snd_multiplier=(SSEConfig.mr16)?1:16; // see POV129
       while(c>0)
       { 
+        AlterV(Alter_V,v,dv,*source_p);
         //LEFT-16bit
-        WORD dma_sample_l=**lp_ste_sound_channel; 
-        *(WORD*)*(WORD**)Out_P=dma_sample_l;
+        val=v+(short)**lp_ste_sound_channel;
+        if(val>SHRT_MAX)
+          val=SHRT_MAX;
+        else if(val<SHRT_MIN)
+          val=SHRT_MIN;
+        *(WORD*)*(WORD**)Out_P=((WORD)val);
         (*(WORD**)Out_P)++;
         // stereo: do the same for right channel
         if(sound_num_channels==2)
         { //RIGHT-16bit
-          WORD dma_sample_r=*(*lp_ste_sound_channel+1);
-          *(WORD*)*(WORD**)Out_P=dma_sample_r;
+          val=v+(short)*(*lp_ste_sound_channel+1);
+          if(val>SHRT_MAX)
+            val=SHRT_MAX;
+          else if(val<SHRT_MIN)
+            val=SHRT_MIN;
+          *(WORD*)*(WORD**)Out_P=((WORD)val);
           (*(WORD**)Out_P)++;
         }
+        WAVEFORM_ONLY(temp_waveform_display[((int)(*source_p-psg_channels_buf)+psg_time_of_last_vbl_for_writing) % MAX_temp_waveform_display_counter]=WORD_B_1(&val)); 
+        *(*source_p)++=0;
         if(*lp_ste_sound_channel<*lp_max_ste_sound_channel) 
           *lp_ste_sound_channel+=2;
         c--;                                                          
