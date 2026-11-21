@@ -528,6 +528,7 @@ HRESULT SoundStartBuffer(int flatlevel1,int flatlevel2) {
   }
   if(Ret!=DS_OK)
   {
+    TRACE("Sound: buffer lock failed, hr=%08X\n",(unsigned)Ret);
     return DSReleaseAllBuffers(Ret);
   }
   // Want to set the value to the highest byte
@@ -563,7 +564,9 @@ HRESULT SoundStartBuffer(int flatlevel1,int flatlevel2) {
   }
   SoundBuf->Unlock(DatAdr,LockLength,DatAdr2,LockLength2);
   SoundBuf->SetVolume(SoundVolume);
-  SoundBuf->Play(0,0,DSBPLAY_LOOPING);
+  Ret=SoundBuf->Play(0,0,DSBPLAY_LOOPING);
+  TRACE("Sound: playing %d bit %d ch %dHz, %d bytes, hr=%08X\n",sound_num_bits,
+    sound_num_channels,(int)sound_freq,(int)LockLength,(unsigned)Ret);
   SoundBufStartTime=timeGetTime();
   return DS_OK;
 #endif//WIN32
@@ -876,6 +879,7 @@ HRESULT DSGetPrimaryBuffer() { // called by SoundStartBuffer()
   Ret=DSObj->CreateSoundBuffer(&dsbd,&PrimaryBuf,NULL);
   if(Ret!=DS_OK)
   {
+    TRACE("Sound: primary buffer failed, hr=%08X\n",(unsigned)Ret);
     return DSReleaseAllBuffers(Ret);
   }
   PrimaryFormat.wFormatTag=WAVE_FORMAT_PCM;
@@ -956,6 +960,9 @@ HRESULT DSGetPrimaryBuffer() { // called by SoundStartBuffer()
       desired_freq/=5;
     }
   }
+  TRACE("Sound: primary %d bit %d ch, asked %dHz, set %dHz, got %dHz%s\n",
+    sound_num_bits,sound_num_channels,(int)sound_chosen_freq,(int)DS_SetFormat_freq,
+    (int)sound_freq,DS_GetFormat_Wrong?" (GetFormat wrong)":"");
   SoundCreateDynamicBuffer();
   return DS_OK;
 }
@@ -988,10 +995,12 @@ HRESULT DSCreateSoundBuf() { // called by SoundStartBuffer()
   Ret=DSObj->CreateSoundBuffer(&dsbd,&SoundBuf,NULL);
   if(Ret!=DS_OK)
   {
+    TRACE("Sound: buffer %d bit %d ch %dHz failed, hr=%08X\n",wfx.wBitsPerSample,
+      wfx.nChannels,(int)wfx.nSamplesPerSec,(unsigned)Ret);
     if(DS_GetFormat_Wrong)
     {
       wfx.nSamplesPerSec=sound_freq;
-      wfx.nAvgBytesPerSec=wfx.nSamplesPerSec;
+      wfx.nAvgBytesPerSec=wfx.nSamplesPerSec*wfx.nBlockAlign; // was missing nBlockAlign (wrong except 8-bit mono)
       ZeroMemory(&dsbd,sizeof(DSBUFFERDESC));
       dsbd.dwSize=sizeof(DSBUFFERDESC);
       dsbd.dwFlags=DSBCAPS_CTRLVOLUME|DSBCAPS_GLOBALFOCUS|DSBCAPS_GETCURRENTPOSITION2
@@ -999,6 +1008,7 @@ HRESULT DSCreateSoundBuf() { // called by SoundStartBuffer()
       dsbd.dwBufferBytes=psg_buf_length * sound_bytes_per_sample;
       dsbd.lpwfxFormat=&wfx;
       Ret=DSObj->CreateSoundBuffer(&dsbd,&SoundBuf,NULL);
+      TRACE("Sound: retry at %dHz, hr=%08X\n",(int)wfx.nSamplesPerSec,(unsigned)Ret);
     }
     if(Ret!=DS_OK)
     {
@@ -1956,7 +1966,10 @@ HRESULT SoundStart() { //Called from run()
     DSObj->SetCooperativeLevel(StemWin,DSSCL_PRIORITY);
 #endif
   if(SoundStartBuffer((signed char)current_l,(signed char)current_r)!=DS_OK)
+  {
+    TRACE("Sound: start failed (%d bit %d ch)\n",sound_num_bits,sound_num_channels);
     return DDERR_GENERIC;
+  }
 #ifdef ONEGAME
   // Make sure sound is still good(ish) if you are running below 80% speed
   OGExtraSamplesPerVBL=300;
