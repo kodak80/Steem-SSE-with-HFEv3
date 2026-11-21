@@ -23,7 +23,7 @@ Setup
 The card
 --------
 - PicoGUS 2.0, firmware 4.2.0-beta.3 (multi-firmware). pgusinit shows
-  "picogus-gus v4.2.0-beta.3 (Steem SSE emulation)".
+  "picogus-gus v4.2.0-beta.3 (SteemSSE)".
 - GUS mode: GF1 with 1MB of DRAM, at 240 by default.
 - SB mode: Sound Blaster (SB16 DSP by default, /sbtype to change it) at
   220, OPL2 at 388 and 220.

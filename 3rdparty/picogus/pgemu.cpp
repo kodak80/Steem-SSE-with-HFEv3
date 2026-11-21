@@ -268,7 +268,7 @@ static void boot_firmware(card_mode_t fw, uint64_t now_us) {
     if (fw < GUS_MODE || fw > USB_MODE) // NR_OF_FIRMWARES = 6
         fw = GUS_MODE;
     mode = fw;
-    snprintf(firmware_string, sizeof(firmware_string), "%s v%s (Steem SSE emulation)",
+    snprintf(firmware_string, sizeof(firmware_string), "%s v%s (SteemSSE)",
         mode_program_name(mode), PG_VERSION);
     control_active = false;
     sel_reg = 0;
