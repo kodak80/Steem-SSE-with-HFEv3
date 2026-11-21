@@ -6,6 +6,20 @@ branch (r1511), adding support for HFE v3 floppy images ("HXCHFEV3", as
 written by the HxC Floppy Emulator software and used by FlashFloppy and HxC
 hardware). Source: https://github.com/kodak80/Steem-SSE-with-HFEv3
 
+What's new in HFEv3-10
+- PicoGUS ISA sound card: Steem can emulate a PicoGUS 2.0 (GUS with 1MB,
+  Sound Blaster, AdLib) on an ISA bus like the Raven060's, at $F20000, so
+  the Raven's ISA_BIOS.PRG and pgusinit.prg run unmodified. Options >
+  Sound > PicoGUS ISA card; put ISA_BIOS.INF (included) in C:\ and
+  ISA_BIOS.PRG in AUTO, and use EmuTOS (TOS 1.04 has no cookie jar). The
+  sound comes from the PicoGUS firmware's own code. No ISA DMA or IRQ, as
+  on ISA_BIOS outside the Raven. See README-PicoGUS.txt.
+  Confirmed: pgusinit detects the card and sets it up in EmuTOS 1.4.
+- MV16 and Replay 16 cartridges: the YM now keeps playing with the
+  cartridge in 16-bit sound output (it was silent; 8-bit already mixed it).
+- Sound: fixed the format of DirectSound's fallback buffer (16-bit and
+  stereo were invalid), and the trace file now logs the sound start.
+
 What's new in HFEv3-9
 - Sectors spanning the index: on tracks with 11 sectors (Blasteroids) the
   last sector runs across the index hole into the next revolution. Steem
