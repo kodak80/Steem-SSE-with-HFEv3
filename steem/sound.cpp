@@ -36,6 +36,7 @@ The I/O code isn't included here, see io?.cpp.
 #include <translate.h>
 #include <gui.h>
 #include <notifyinit.h>
+#include <isa_picogus.h>
 #if defined(SSE_VID_RECORD_AVI)
 #include <AVI/AviFile.h> // AVI (DD-only)
 #endif
@@ -1884,6 +1885,10 @@ HRESULT SoundVBL() {
         samples_left_in_buffer-=LockLength[n]/sound_bytes_per_sample;
       }
     }
+#if defined(SSE_PICOGUS)
+    if(OPTION_PICOGUS) // the card's audio, added to what was written
+      PicoGusMixSound(DatAdr,LockLength,write_time_1);
+#endif
 #if defined(SSE_VID_RECORD_AVI) 
     if(video_recording&&SoundBuf&&pAviFile&&pAviFile->Initialised)
       pAviFile->AppendSound(DatAdr[0],LockLength[0]);

@@ -1,0 +1,134 @@
+--- upstream/sw/gus/gus-x.cpp
++++ steem/sw/gus/gus-x.cpp
+@@ -331,6 +331,9 @@
+             uint32_t data32;
+             int16_t data16[2];
+         };
++        // Steem: MSVC has no compound literals in C++
++        static INLINE int16_t_pair pair16(int16_t a, int16_t b) { int16_t_pair p; p.data16[0] = a; p.data16[1] = b; return p; }
++        static INLINE int16_t_pair pair32(uint32_t v) { int16_t_pair p; p.data32 = v; return p; }
+ 
+         INLINE size_t prime_cache(const uint32_t addr, const uint8_t threshold) const {
+             uint32_t addr_hi = addr & 0xffff0u;
+@@ -361,28 +364,25 @@
+         INLINE int16_t_pair LoadSamples8(const uint32_t addr/*memory address without fractional bits*/) const {
+             if ((WaveAdd >> WAVE_FRACT) >= 16u && (addr & 0x3ffu) != 0x3ffu) {
+                 const uint32_t pair = psram_read16(&psram_spi, addr);
+-                return (union int16_t_pair){ .data16 = {
++                return pair16(
+                     (int16_t)(uint16_t)(pair << 8),
+-                    (int16_t)(uint16_t)(pair & 0xff00u)
+-                }};
++                    (int16_t)(uint16_t)(pair & 0xff00u));
+             }
+             const size_t addr_part = prime_cache(addr, 0xfu);
+-            return (union int16_t_pair){ .data16 = {
++            return pair16(
+                 (int16_t)((uint16_t)sample_cache.data[addr_part] << 8),
+-                (int16_t)((uint16_t)sample_cache.data[addr_part + 1] << 8)
+-            }};
++                (int16_t)((uint16_t)sample_cache.data[addr_part + 1] << 8));
+         }
+ 
+         INLINE int16_t_pair LoadSamples16(const uint32_t addr/*memory address without fractional bits*/) const {
+             const uint32_t adjaddr = (addr & 0xC0000u/*256KB bank*/) | ((addr & 0x1FFFFu) << 1u/*16-bit sample value within bank*/);
+             if ((WaveAdd >> WAVE_FRACT) >= 8u && (adjaddr & 0x3feu) != 0x3feu) {
+-                return (union int16_t_pair){ .data32 = psram_read32(&psram_spi, adjaddr) };
++                return pair32(psram_read32(&psram_spi, adjaddr));
+             }
+             const size_t addr_part = prime_cache(adjaddr, 0xeu);
+-            return (union int16_t_pair){ .data16 = {
++            return pair16(
+                 (int16_t)*(uint16_t*)(sample_cache.data + addr_part),
+-                (int16_t)*(uint16_t*)(sample_cache.data + addr_part + 2)
+-            }};
++                (int16_t)*(uint16_t*)(sample_cache.data + addr_part + 2));
+         }
+ #endif // PSRAM
+ 
+--- upstream/sw/sbdsp/sbdsp.cpp
++++ steem/sw/sbdsp/sbdsp.cpp
+@@ -975,7 +975,11 @@
+                 sbdsp.current_command_index++;
+             }
+             break;
+-        case DSP_DMA_IO_START ... DSP_DMA_IO_END:
++        // Steem: MSVC has no case ranges (DSP_DMA_IO_START ... DSP_DMA_IO_END)
++        case 0xB0: case 0xB1: case 0xB2: case 0xB3: case 0xB4: case 0xB5: case 0xB6: case 0xB7:
++        case 0xB8: case 0xB9: case 0xBA: case 0xBB: case 0xBC: case 0xBD: case 0xBE: case 0xBF:
++        case 0xC0: case 0xC1: case 0xC2: case 0xC3: case 0xC4: case 0xC5: case 0xC6: case 0xC7:
++        case 0xC8: case 0xC9: case 0xCA: case 0xCB: case 0xCC: case 0xCD: case 0xCE: case 0xCF:
+             // SB16 DMA transfer
+             if (sbdsp.dav_dsp) {
+                 if (sbdsp.current_command_index == 0) { // bCommand + bMode
+@@ -1360,7 +1364,9 @@
+         case MIXER_VOL_VOICE:
+             sbmixer_pro_set(sbdsp.mixer_command, value);
+             break;
+-        case MIXER_VOL_MASTER_L ... MIXER_VOL_LINE_R:
++        // Steem: MSVC has no case ranges (MIXER_VOL_MASTER_L ... MIXER_VOL_LINE_R)
++        case 0x30: case 0x31: case 0x32: case 0x33: case 0x34:
++        case 0x35: case 0x36: case 0x37: case 0x38: case 0x39:
+             sbmixer_16_set(sbdsp.mixer_command, value);
+             break;
+         case MIXER_OUT_SWITCH:
+--- upstream/sw/include/pg_debug.h
++++ steem/sw/include/pg_debug.h
+@@ -1,48 +1,15 @@
+-/*
+- *  PicoGUS Debug Printing Framework
+- *
+- *  Copyright (C) 2024  Ian Scott
+- *
+- *  Master switch: PGDEBUG (set via CMake: -DPGDEBUG=ON)
+- *    When PGDEBUG is not defined, all debug macros compile to ((void)0).
+- *
+- *  Module-level switches (PGDEBUG_GUS, PGDEBUG_CDROM, etc.) provide
+- *  per-module granularity within debug builds.
+- *
+- *  ERR_PUTS outputs fatal error strings via UART directly, bypassing
+- *  printf/stdio entirely. Works even with pico_set_printf_implementation(none).
+- */
+-
++/*  Steem SSE: replacement for the firmware's sw/include/pg_debug.h, which
++    prints to the Pico's UART. Debug output is compiled out here; define
++    PGDEBUG to send it to stderr. */
+ #pragma once
+-
+-#include "hardware/uart.h"
+-#include "hardware/gpio.h"
+-
+-/* ---- Fatal error output: always active, bypasses printf ---- */
+-static inline void _pg_err_puts(const char *s) {
+-    uart_inst_t *uart = uart0;
+-    if (!uart_is_enabled(uart)) {
+-        uart_init(uart, PICO_DEFAULT_UART_BAUD_RATE);
+-        gpio_set_function(PICO_DEFAULT_UART_TX_PIN, GPIO_FUNC_UART);
+-    }
+-    uart_puts(uart, s);
+-    uart_puts(uart, "\r\n");
+-}
+-#define ERR_PUTS(s) _pg_err_puts(s)
+-
+-/* ---- Debug macros: gated on PGDEBUG ---- */
+-#ifdef PGDEBUG
+-
+ #include <stdio.h>
+-
+-#define DBG_PRINTF(fmt, ...)  printf(fmt, ##__VA_ARGS__)
+-#define DBG_PUTS(s)           puts(s)
+-#define DBG_PUTCHAR(c)        putchar(c)
+-
++#define ERR_PUTS(s) fprintf(stderr, "PicoGUS: %s\n", s)
++#ifdef PGDEBUG
++#define DBG_PRINTF(fmt, ...)  fprintf(stderr, fmt, ##__VA_ARGS__)
++#define DBG_PUTS(s)           fprintf(stderr, "%s\n", s)
++#define DBG_PUTCHAR(c)        fputc(c, stderr)
+ #else
+-
+ #define DBG_PRINTF(fmt, ...)  ((void)0)
+ #define DBG_PUTS(s)           ((void)0)
+ #define DBG_PUTCHAR(c)        ((void)0)
+-
+-#endif /* PGDEBUG */
++#endif

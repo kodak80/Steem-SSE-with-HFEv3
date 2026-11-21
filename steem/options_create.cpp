@@ -3985,6 +3985,15 @@ void TOptionBox::CreateSoundPage() {
   SendMessage(Win,TBM_SETPAGESIZE,0,10);
 #endif
 
+#if defined(SSE_PICOGUS)
+  NextLine();
+  Win=CreateButton(T("PicoGUS ISA card"),IDC_PICOGUS,WS_CHILD|WS_TABSTOP|BS_CHECKBOX);
+  SendMessage(Win,BM_SETCHECK,OPTION_PICOGUS,0);
+  ToolAddWindow(ToolTip,Win,T("PicoGUS 2.0 sound card (GUS, Sound Blaster, AdLib) on an ISA bus\
+ window at $F20000, as on the Raven060. Run ISA_BIOS.PRG with C:\\ISA_BIOS.INF\
+ containing isa.iobase=0xF20000 and isa.endian=lels"));
+#endif
+
   NextLine();
   Offset+=LineStart;
   mask=WS_CHILD|WS_TABSTOP|BS_CHECKBOX|DisableIfMute;

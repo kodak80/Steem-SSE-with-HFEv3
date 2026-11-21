@@ -48,6 +48,7 @@ from both).
 #include <interface_stvl.h>
 #endif
 #include <iolist.h>
+#include <isa_picogus.h>
 
 BYTE const SCANLINE_BYTES_HIGH=80; // bytes of video memory per scanline, normal
 BYTE const SCANLINE_BYTES_LOMED=160; // bytes of video memory per scanline, normal
@@ -158,6 +159,10 @@ void TGlue::Restore() {
 #if defined(SSE_MMU_MONSTER_ALT_RAM)
     else if(b<AltRamEnd)
       Decode[b]=ALTRAM;
+#endif
+#if defined(SSE_PICOGUS)
+    else if(OPTION_PICOGUS && b==PICOGUS_ISA_DECODE)
+      Decode[b]=ISABUS; // ISA I/O window, unused on the ST
 #endif
     else if(bTosLow && b>=0xE0 && b<0xEC)
       Decode[b]=(BYTE)((b<0xE4)?ROM:ROM1); // 'ROM1' not connected

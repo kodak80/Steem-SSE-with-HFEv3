@@ -29,6 +29,7 @@ DESCRIPTION: Functions for MC68000 Effective Address (EA), Read/Write (RW)
 #if defined(SSE_VID_STVL1)
 #include <interface_stvl.h>
 #endif
+#include <isa_picogus.h>
 
 
 // pointers to functions
@@ -119,6 +120,11 @@ BYTE m68k_peek_st(MEM_ADDRESS const ad) {
     d8=io_word.d8[byte_index];
     break;
   }
+#if defined(SSE_PICOGUS)
+  case TGlue::ISABUS:
+    d8=PicoGusIsaRead(fake_abus);
+    break;
+#endif
   case TGlue::ROM:
   {
     MEM_ADDRESS rombus=fake_abus-rom_addr;
@@ -238,6 +244,13 @@ BYTE m68k_peek_st(MEM_ADDRESS const ad) {
 WORD m68k_dpeek_st(MEM_ADDRESS const ad) {
   abus=ad&0xfffffe;
   dbus=0xffff; // default
+#if defined(SSE_PICOGUS)
+  if(Glue.Decode[(BYTE)(abus>>16)]==TGlue::ISABUS)
+  { // like the Raven's 68060, word access at an odd ISA port allowed
+    dbus=PicoGusIsaReadW(ad&0xffffff);
+    return dbus;
+  }
+#endif
   if(ad&1)
     exception(EXCEPTION_ADDRESS_ERROR,EA_READ,abus);
 #if defined(SSE_DONGLE_CUBASE2)
@@ -654,6 +667,11 @@ void m68k_poke_abus0(BYTE const x) {
   case TGlue::MMU_CONFUSED:
     mmu_confused_poke_abus(x); 
     break;
+#if defined(SSE_PICOGUS)
+  case TGlue::ISABUS:
+    PicoGusIsaWrite(fake_abus,x);
+    break;
+#endif
   case TGlue::DEV:
     io_write(abus,udbus);
     break;
@@ -712,6 +730,13 @@ void m68k_poke_abus0(BYTE const x) {
 
 void m68k_dpoke_abus0(WORD const x) {
   abus=iabus&0xfffffe;
+#if defined(SSE_PICOGUS)
+  if(Glue.Decode[(BYTE)(abus>>16)]==TGlue::ISABUS)
+  { // like the Raven's 68060, word access at an odd ISA port allowed
+    PicoGusIsaWriteW(iabus&0xffffff,x);
+    return;
+  }
+#endif
   if(iabus&1)
     exception(EXCEPTION_ADDRESS_ERROR,EA_WRITE,abus);
 #if defined(SSE_DONGLE_CUBASE2)

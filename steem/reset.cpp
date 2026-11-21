@@ -33,6 +33,7 @@ CPU instruction reset     = reset peripherals
 #include <draw.h>
 #include <gui.h>
 #include <loadsave.h>
+#include <isa_picogus.h>
 #if defined(SSE_VID_DD)
 #include <display.h>
 #endif
@@ -193,6 +194,9 @@ void power_on() {
   hbl_count=0;
   agenda_length=0;
   emudetect_reset();
+#if defined(SSE_PICOGUS)
+  PicoGusPowerOff(); // the card is powered with the ST
+#endif
   snapshot_loaded=0;
   for(BYTE floppyno=DRIVE_A;floppyno<=DRIVE_B;floppyno++)
   {

@@ -265,6 +265,7 @@ compilation of about everything.
 #define SSE_GREASEWEAZLE_FLUX // real drive on a Greaseweazle read as raw flux (SCP flux mode)
 #endif
 #define SSE_GEM_CONTROL_PANEL // fun!
+#define SSE_PICOGUS // PicoGUS ISA sound card on an ISA bus window at $F20000 (Raven060 style)
 #define SSE_GUI_BIGICONS // for high DPI screens
 #define SSE_GUI_CONFIG // config (profile) mods
 //#define SSE_GUI_CONFIG_WRENCH // 420: removing the wrench icon

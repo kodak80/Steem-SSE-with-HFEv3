@@ -6523,6 +6523,42 @@ copy "$(TargetPath)" "E:\emu\ST\bin\steem\SteemD64GDI.exe"
     <ClCompile Include="..\..\steem\floppybridge_drive.cpp" />
     <ClCompile Include="..\..\steem\greaseweazle_flux.cpp" />
     <ClCompile Include="..\..\steem\disk_hfe.cpp" />
+    <ClCompile Include="..\..\steem\isa_picogus.cpp" />
+    <ClCompile Include="..\..\3rdparty\picogus\pgemu.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalIncludeDirectories>..\..\3rdparty\picogus\shim;..\..\3rdparty\picogus\sw;..\..\3rdparty\picogus;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\picogus\pg_gus.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalIncludeDirectories>..\..\3rdparty\picogus\shim;..\..\3rdparty\picogus\sw;..\..\3rdparty\picogus;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\picogus\pg_sb.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalIncludeDirectories>..\..\3rdparty\picogus\shim;..\..\3rdparty\picogus\sw;..\..\3rdparty\picogus;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\picogus\pg_opl.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalIncludeDirectories>..\..\3rdparty\picogus\shim;..\..\3rdparty\picogus\sw;..\..\3rdparty\picogus;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\picogus\pg_opl3.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalIncludeDirectories>..\..\3rdparty\picogus\shim;..\..\3rdparty\picogus\sw;..\..\3rdparty\picogus;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\picogus\pg_volctrl.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalIncludeDirectories>..\..\3rdparty\picogus\shim;..\..\3rdparty\picogus\sw;..\..\3rdparty\picogus;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\picogus\pg_platform.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalIncludeDirectories>..\..\3rdparty\picogus\shim;..\..\3rdparty\picogus\sw;..\..\3rdparty\picogus;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
     <ClCompile Include="..\..\steem\disk_scp.cpp" />
     <ClCompile Include="..\..\steem\disk_stw.cpp" />
     <ClCompile Include="..\..\steem\disk_stx.cpp" />
@@ -7284,6 +7320,8 @@ copy "$(TargetPath)" "E:\emu\ST\bin\steem\SteemD64GDI.exe"
     <ClInclude Include="..\..\steem\headers\diskman.h" />
     <ClInclude Include="..\..\steem\headers\disk_ghost.h" />
     <ClInclude Include="..\..\steem\headers\disk_hfe.h" />
+    <ClInclude Include="..\..\steem\headers\isa_picogus.h" />
+    <ClInclude Include="..\..\3rdparty\picogus\pgemu.h" />
     <ClInclude Include="..\..\steem\headers\floppybridge_drive.h" />
     <ClInclude Include="..\..\steem\headers\greaseweazle_flux.h" />
     <ClInclude Include="..\..\steem\headers\disk_scp.h" />

@@ -1642,6 +1642,9 @@ void TOptionBox::LoadData(bool FirstLoad,TConfigStoreFile *pCSF,bool *SecDisable
 #if defined(SSE_SOUND_MICROWIRE_OPTION)
     OPTION_MICROWIRE=pCSF->GetBool("Sound","Microwire",OPTION_MICROWIRE);
 #endif
+#if defined(SSE_PICOGUS)
+    OPTION_PICOGUS=pCSF->GetBool("Sound","PicoGUS",OPTION_PICOGUS);
+#endif
     Microwire.LowShelf=pCSF->GetInt("Sound","LmcLowShelf",Microwire.LowShelf);
     Microwire.HighShelf=pCSF->GetInt("Sound","LmcHighShelf",Microwire.HighShelf);
     MuteWhenInactive=pCSF->GetByte("Sound","MuteWhenInactive",MuteWhenInactive);
@@ -1934,6 +1937,9 @@ void TOptionBox::SaveData(bool FinalSave,TConfigStoreFile *pCSF) {
 #endif
 #if defined(SSE_SOUND_MICROWIRE_OPTION)
   pCSF->SetInt("Sound","Microwire",OPTION_MICROWIRE);
+#endif
+#if defined(SSE_PICOGUS)
+  pCSF->SetInt("Sound","PicoGUS",OPTION_PICOGUS);
 #endif
   pCSF->SetInt("Sound","LmcLowShelf",Microwire.LowShelf);
   pCSF->SetInt("Sound","LmcHighShelf",Microwire.HighShelf);

@@ -396,6 +396,8 @@ enum EOptions {
   ETOS_FAKE_VERSION=5, // TODO
 #endif
 
+  IDC_PICOGUS=17410,
+
   IDC_PAGETREE=60000 // no control should have IDC above 60000
 };
 
@@ -839,6 +841,7 @@ struct TOption {
   bool InstantMachineChange;
 #endif
   bool MidiUseTimer,MidiUseSleep;
+  bool PicoGus; // PicoGUS card on an ISA bus window
   enum EOption {SoundFormatWav,SoundFormatYm};
   TOption();
   void Init();
@@ -877,6 +880,11 @@ extern struct TOption SSEOptions;
 #define OPTION_MICROWIRE (TRUE)
 #else
 #define OPTION_MICROWIRE (SSEOptions.Microwire)
+#endif
+#if defined(SSE_PICOGUS)
+#define OPTION_PICOGUS (SSEOptions.PicoGus)
+#else
+#define OPTION_PICOGUS (FALSE)
 #endif
 #define ST_MODEL (SSEOptions.STModel)
 

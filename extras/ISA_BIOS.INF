@@ -1,0 +1,11 @@
+# ISA_BIOS configuration for Steem SSE's PicoGUS emulation.
+#
+# Copy to C:\ISA_BIOS.INF (the root of drive C, e.g. a GEMDOS hard drive)
+# and run ISA_BIOS.PRG from the Raven060 software (sw/isa/isa_bios) in the
+# AUTO folder. It installs the _ISA cookie on Steem's ISA bus window, then
+# Raven ISA drivers and tools such as pgusinit work unmodified.
+# In Steem: Options > Sound > PicoGUS ISA card.
+
+isa.iobase      = 0xF20000
+isa.endian      = lels
+isa.pnp.enable  = 0

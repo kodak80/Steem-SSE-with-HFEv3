@@ -45,6 +45,7 @@ Also TOption and TConfig.
 #include <key_table.h>
 #include <harddiskman.h>
 #include <notifyinit.h>
+#include <isa_picogus.h>
 #if defined(SSE_VID_STVL1)
 #include <interface_stvl.h>
 #endif
@@ -3459,6 +3460,17 @@ LRESULT CALLBACK TOptionBox::WndProc(HWND Win,UINT Mess,WPARAM wPar,LPARAM lPar)
         OPTION_DRIVE_SOUND=!OPTION_DRIVE_SOUND;
         SendMessage((HWND)lPar,BM_SETCHECK,OPTION_DRIVE_SOUND,0);
         //TRACE_LOG("Option Drive Sound %d\n",OPTION_DRIVE_SOUND);
+      }
+      break;
+#endif
+#if defined(SSE_PICOGUS)
+    case IDC_PICOGUS: // PicoGUS ISA card plugged in or out
+      if(wpar_hi==BN_CLICKED)
+      {
+        OPTION_PICOGUS=!OPTION_PICOGUS;
+        SendMessage((HWND)lPar,BM_SETCHECK,OPTION_PICOGUS,0);
+        Glue.Restore(); // the ISA window in the memory map
+        PicoGusPowerOff(); // powered on at its next access
       }
       break;
 #endif

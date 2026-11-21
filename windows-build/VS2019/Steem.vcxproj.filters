@@ -138,6 +138,30 @@
     <ClCompile Include="..\..\steem\disk_hfe.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\steem\isa_picogus.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\picogus\pgemu.cpp">
+      <Filter>Third Party</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\picogus\pg_gus.cpp">
+      <Filter>Third Party</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\picogus\pg_sb.cpp">
+      <Filter>Third Party</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\picogus\pg_opl.cpp">
+      <Filter>Third Party</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\picogus\pg_opl3.cpp">
+      <Filter>Third Party</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\picogus\pg_volctrl.cpp">
+      <Filter>Third Party</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\3rdparty\picogus\pg_platform.cpp">
+      <Filter>Third Party</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\steem\disk_scp.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -697,6 +721,12 @@
     </ClInclude>
     <ClInclude Include="..\..\steem\headers\disk_hfe.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\steem\headers\isa_picogus.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\3rdparty\picogus\pgemu.h">
+      <Filter>Third Party</Filter>
     </ClInclude>
     <ClInclude Include="..\..\steem\headers\floppybridge_drive.h">
       <Filter>Header Files</Filter>
