@@ -121,7 +121,7 @@ static DWORDLONG PicoGusAccess() {
     pgemu_set_flash_file(Flash.Text);
     pgemu_power_on(0);
     PgAudioSync=false;
-    TRACE_LOG("PicoGUS power on, mode %d, flash %s\n",pgemu_mode(),Flash.Text);
+    TRACE("PicoGUS: power on, mode %d, flash %s\n",pgemu_mode(),Flash.Text);
   }
   DWORDLONG now=PicoGusNowUs();
   PicoGusRenderTo(PicoGusSampleNow());
@@ -129,14 +129,28 @@ static DWORDLONG PicoGusAccess() {
 }
 
 
+static int PgTraceCount=0; // the first ISA accesses go to TRACE.txt
+#define PG_TRACE_MAX 200
+
 BYTE PicoGusIsaRead(MEM_ADDRESS ad) {
   DWORDLONG now=PicoGusAccess();
-  return pgemu_inb((WORD)(ad&0xFFFF),now);
+  BYTE x=pgemu_inb((WORD)(ad&0xFFFF),now);
+  if(PgTraceCount<PG_TRACE_MAX)
+  {
+    PgTraceCount++;
+    TRACE("PicoGUS: in  %03X = %02X (pc %06X)\n",(int)(ad&0xFFFF),x,(int)(pc&0xFFFFFF));
+  }
+  return x;
 }
 
 
 void PicoGusIsaWrite(MEM_ADDRESS ad,BYTE x) {
   DWORDLONG now=PicoGusAccess();
+  if(PgTraceCount<PG_TRACE_MAX)
+  {
+    PgTraceCount++;
+    TRACE("PicoGUS: out %03X = %02X (pc %06X)\n",(int)(ad&0xFFFF),x,(int)(pc&0xFFFFFF));
+  }
   pgemu_outb((WORD)(ad&0xFFFF),x,now);
 }
 
@@ -161,7 +175,10 @@ void PicoGusIsaWriteW(MEM_ADDRESS ad,WORD x) {
 
 
 void PicoGusPowerOff() {
+  if(CardOn)
+    TRACE("PicoGUS: power off\n");
   CardOn=false;
+  PgTraceCount=0;
   PgAudioSync=false;
 }
 

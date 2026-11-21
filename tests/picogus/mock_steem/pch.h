@@ -18,6 +18,8 @@ typedef DWORD MEM_ADDRESS;
 #define ZeroMemory(p,n) memset((p),0,(n))
 #define SLASH "/"
 #define TRACE_LOG(...) ((void)0)
+#define TRACE(...) ((void)0)
+extern MEM_ADDRESS pc;
 struct EasyStr {
     std::string s; const char *Text;
     EasyStr(const char *c = "") : s(c), Text(s.c_str()) {}

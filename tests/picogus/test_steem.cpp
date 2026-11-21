@@ -7,6 +7,7 @@
 #include "isa_picogus.h"
 
 EasyStr UsersPath(".");
+MEM_ADDRESS pc = 0;
 COUNTER_VAR mock_sys_time = 0, sys_time_of_last_vbl = 0;
 DWORD nSysCyclesPerSecond = 8000000;
 BYTE VideoFreqAtStartOfVbl = 50;
